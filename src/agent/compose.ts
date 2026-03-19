@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { CONFIG_DIR } from "../config/paths.js";
 import { AGENT_DEFAULT_PORT, PACKAGE_ROOT } from "./constants.js";
 
-const DEFAULT_AGENT_IMAGE_REPOSITORY = "ghcr.io/desu777/echoclaw/echo-agent";
+const DEFAULT_AGENT_IMAGE_REPOSITORY = "ghcr.io/echoclaw-labs/echoclaw/echo-agent";
 const DEFAULT_COMPOSE_TIMEOUT_MS = 300_000;
 const OUTPUT_TAIL_LINES = 40;
 const RELEASE_IMAGE_FAILURE_PATTERNS = [

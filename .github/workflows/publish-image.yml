@@ -45,7 +45,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/desu777/echoclaw/echo-agent:${{ steps.meta.outputs.version }}
-            ghcr.io/desu777/echoclaw/echo-agent:latest
+            ghcr.io/echoclaw-labs/echoclaw/echo-agent:${{ steps.meta.outputs.version }}
+            ghcr.io/echoclaw-labs/echoclaw/echo-agent:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max

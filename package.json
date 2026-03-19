@@ -97,11 +97,11 @@
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",
-    "url": "https://github.com/desu777/EchoClaw.git"
+    "url": "https://github.com/EchoClaw-Labs/EchoClaw.git"
   },
-  "homepage": "https://github.com/desu777/EchoClaw",
+  "homepage": "https://github.com/EchoClaw-Labs/EchoClaw",
   "bugs": {
-    "url": "https://github.com/desu777/EchoClaw/issues"
+    "url": "https://github.com/EchoClaw-Labs/EchoClaw/issues"
   },
   "packageManager": "pnpm@10.32.1"
 }

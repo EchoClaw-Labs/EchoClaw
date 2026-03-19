@@ -48,7 +48,7 @@ jobs:
       - name: Verify matching GHCR agent image exists
         if: steps.version-check.outputs.skip != 'true'
         env:
-          AGENT_IMAGE_REPOSITORY: desu777/echoclaw/echo-agent
+          AGENT_IMAGE_REPOSITORY: echoclaw-labs/echoclaw/echo-agent
         run: |
           set -euo pipefail
 

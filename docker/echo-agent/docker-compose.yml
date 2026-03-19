@@ -4,7 +4,7 @@
 services:
   # --- Echo Agent (Node.js) ---
   agent:
-    image: ${ECHO_AGENT_IMAGE:-ghcr.io/desu777/echoclaw/echo-agent:latest}
+    image: ${ECHO_AGENT_IMAGE:-ghcr.io/echoclaw-labs/echoclaw/echo-agent:latest}
     ports:
       - "${AGENT_PORT:-4201}:4201"
     depends_on:

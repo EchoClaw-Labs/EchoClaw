@@ -1,8 +1,9 @@
 node_modules/
-src/
-!src/agent/db/migrations/
+dist/
 .git/
 .gitignore
+.github/
+.claude/
 *.md
 *.log
 .env*
@@ -10,3 +11,6 @@ src/
 coverage/
 UIUX/
 fe.md
+public/
+TEAM/
+agents_dm/

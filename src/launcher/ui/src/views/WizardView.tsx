@@ -1,6 +1,6 @@
 import { type FC, useState, useEffect, useCallback } from "react";
 import { WaveSpinner } from "../components/WaveSpinner";
-import { getRouting, getSnapshot, postApi } from "../api";
+import { getRouting, getSnapshot, postApi, startAgent as launchAgent } from "../api";
 import { RUNTIME_OPTIONS } from "../utils/runtime-meta";
 import { deriveWizardBootstrapStep, type WizardStep } from "../utils/wizard-bootstrap";
 
@@ -30,7 +30,15 @@ export const WizardView: FC<Props> = ({ onComplete }) => {
   const [runtime, setRuntime] = useState("openclaw");
   const [providers, setProviders] = useState<Provider[]>([]);
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
-  const [fundAmount, setFundAmount] = useState("1.0");
+  const [fundAmount, setFundAmount] = useState("3.0");
+
+  // Step 2: wallet addresses after creation
+  const [walletAddresses, setWalletAddresses] = useState<{ evm: string; solana?: string } | null>(null);
+  const [walletCreated, setWalletCreated] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+
+  // Step 3: EchoClaw Agent toggle
+  const [startAgent, setStartAgent] = useState(true);
 
   // Skip already-done steps based on snapshot
   useEffect(() => {
@@ -63,6 +71,13 @@ export const WizardView: FC<Props> = ({ onComplete }) => {
     finally { setBusy(false); }
   }, []);
 
+  const copyToClipboard = useCallback((text: string, label: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(label);
+      setTimeout(() => setCopied(null), 2000);
+    });
+  }, []);
+
   if (loading) return <div className="flex justify-center py-20"><WaveSpinner size="lg" /></div>;
   if (step === "done") { onComplete(); return null; }
 
@@ -70,7 +85,7 @@ export const WizardView: FC<Props> = ({ onComplete }) => {
   const stepIdx = STEPS.findIndex(s => s.key === step);
 
   return (
-    <div className="mx-auto max-w-lg px-5 py-12">
+    <div className="mx-auto max-w-2xl px-5 py-12">
       {/* Progress */}
       <div className="flex items-center justify-center gap-2 mb-8">
         {STEPS.map((s, i) => (
@@ -120,37 +135,125 @@ export const WizardView: FC<Props> = ({ onComplete }) => {
         {/* Wallet step */}
         {step === "wallet" && (
           <>
-            <div className="space-y-2">
-              {(["evm", "both"] as const).map(opt => (
-                <label key={opt} className={`flex items-center gap-3 rounded-xl border p-3 cursor-pointer transition ${walletChain === opt ? "border-neon-blue/50 bg-neon-blue/5" : "border-white/[0.06]"}`}>
-                  <input type="radio" name="chain" checked={walletChain === opt} onChange={() => setWalletChain(opt)} className="accent-neon-blue" />
-                  <span className="text-sm text-white">{opt === "evm" ? "EVM only" : "EVM + Solana"}</span>
-                </label>
-              ))}
-            </div>
-            <button disabled={busy}
-              onClick={() => doStep(async () => {
-                await postApi("/api/wallet/create", { chain: "evm" });
-                if (walletChain === "both") await postApi("/api/wallet/create", { chain: "solana" });
-                setStep("runtime");
-              })}
-              className="w-full rounded-lg bg-neon-blue/20 py-2.5 text-sm font-medium text-neon-blue hover:bg-neon-blue/30 transition disabled:opacity-40">
-              {busy ? "Creating..." : "Create Wallet"}
-            </button>
+            {!walletCreated ? (
+              <>
+                <div className="space-y-2">
+                  {(["evm", "both"] as const).map(opt => (
+                    <label key={opt} className={`flex items-center gap-3 rounded-xl border p-3 cursor-pointer transition ${walletChain === opt ? "border-neon-blue/50 bg-neon-blue/5" : "border-white/[0.06]"}`}>
+                      <input type="radio" name="chain" checked={walletChain === opt} onChange={() => setWalletChain(opt)} className="accent-neon-blue" />
+                      <span className="text-sm text-white">{opt === "evm" ? "EVM only" : "EVM + Solana"}</span>
+                    </label>
+                  ))}
+                </div>
+                <button disabled={busy}
+                  onClick={() => doStep(async () => {
+                    await postApi("/api/wallet/create", { chain: "evm" });
+                    if (walletChain === "both") await postApi("/api/wallet/create", { chain: "solana" });
+                    // Fetch fresh snapshot to get wallet addresses
+                    const snap = await getSnapshot(true) as { wallet?: { evmAddress?: string; solanaAddress?: string } };
+                    const evm = snap?.wallet?.evmAddress ?? "";
+                    const solana = snap?.wallet?.solanaAddress;
+                    setWalletAddresses({ evm, solana: solana || undefined });
+                    setWalletCreated(true);
+                  })}
+                  className="w-full rounded-lg bg-neon-blue/20 py-2.5 text-sm font-medium text-neon-blue hover:bg-neon-blue/30 transition disabled:opacity-40">
+                  {busy ? "Creating..." : "Create Wallet"}
+                </button>
+              </>
+            ) : (
+              <>
+                {/* Success screen with addresses */}
+                <div className="flex flex-col items-center gap-3">
+                  <div className="flex items-center justify-center w-12 h-12 rounded-full bg-emerald-500/20">
+                    <svg className="w-6 h-6 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <p className="text-sm font-medium text-emerald-400">Wallet created successfully</p>
+                </div>
+
+                {walletAddresses?.evm && (
+                  <div className="space-y-1">
+                    <label className="block text-xs text-zinc-400">EVM Address</label>
+                    <div className="flex items-center gap-2 rounded-lg border border-white/[0.06] bg-zinc-900 px-3 py-2">
+                      <code className="flex-1 text-xs text-white font-mono break-all">{walletAddresses.evm}</code>
+                      <button
+                        onClick={() => copyToClipboard(walletAddresses.evm, "evm")}
+                        className="shrink-0 rounded bg-zinc-800 px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-700 transition">
+                        {copied === "evm" ? "Copied!" : "Copy"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {walletAddresses?.solana && (
+                  <div className="space-y-1">
+                    <label className="block text-xs text-zinc-400">Solana Address</label>
+                    <div className="flex items-center gap-2 rounded-lg border border-white/[0.06] bg-zinc-900 px-3 py-2">
+                      <code className="flex-1 text-xs text-white font-mono break-all">{walletAddresses.solana}</code>
+                      <button
+                        onClick={() => copyToClipboard(walletAddresses.solana!, "solana")}
+                        className="shrink-0 rounded bg-zinc-800 px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-700 transition">
+                        {copied === "solana" ? "Copied!" : "Copy"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <p className="text-xs text-amber-400/80 text-center">
+                  Fund this address with at least 3 0G before proceeding to compute setup
+                </p>
+
+                <button
+                  onClick={() => setStep("runtime")}
+                  className="w-full rounded-lg bg-neon-blue/20 py-2.5 text-sm font-medium text-neon-blue hover:bg-neon-blue/30 transition">
+                  Continue
+                </button>
+              </>
+            )}
           </>
         )}
 
         {/* Runtime step */}
         {step === "runtime" && (
           <>
-            <div className="space-y-2">
-              {RUNTIME_OPTIONS.map(opt => (
-                <label key={opt.key} className={`flex items-center gap-3 rounded-xl border p-3 cursor-pointer transition ${runtime === opt.key ? "border-neon-blue/50 bg-neon-blue/5" : "border-white/[0.06]"}`}>
-                  <input type="radio" name="runtime" checked={runtime === opt.key} onChange={() => setRuntime(opt.key)} className="accent-neon-blue" />
-                  <span className="text-sm text-white">{opt.label}</span>
-                </label>
-              ))}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Left column — External Runtimes */}
+              <div className="space-y-2">
+                {RUNTIME_OPTIONS.map(opt => (
+                  <label key={opt.key} className={`flex items-center gap-3 rounded-xl border p-3 cursor-pointer transition ${!startAgent && runtime === opt.key ? "border-neon-blue/50 bg-neon-blue/5" : "border-white/[0.06]"}`}>
+                    <input type="radio" name="runtime" checked={!startAgent && runtime === opt.key}
+                      onChange={() => { setRuntime(opt.key); setStartAgent(false); }}
+                      className="accent-neon-blue" />
+                    <div>
+                      <span className="text-sm text-white">{opt.label}</span>
+                      <p className="text-xs text-zinc-500">{opt.description}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+
+              {/* Right column — EchoClaw Agent featured card */}
+              <button
+                type="button"
+                onClick={() => { setRuntime("openclaw"); setStartAgent(true); }}
+                className={`flex flex-col items-center gap-3 rounded-2xl border-2 p-5 cursor-pointer transition text-left
+                  ${startAgent
+                    ? "border-neon-blue bg-neon-blue/5 shadow-[0_0_20px_rgba(56,189,248,0.15)]"
+                    : "border-white/[0.06] hover:border-white/[0.12]"}`}>
+                <img src="/echoclaw-logo.png" alt="EchoClaw Agent" className="w-16 h-16 rounded-xl object-contain" />
+                <div className="text-center">
+                  <div className="text-sm font-semibold text-white">EchoClaw Agent</div>
+                  <span className="inline-block mt-1 rounded-full bg-neon-blue/20 px-2 py-0.5 text-[10px] font-medium text-neon-blue">
+                    Recommended
+                  </span>
+                  <p className="mt-2 text-xs text-zinc-400 leading-relaxed">
+                    AI Trading Assistant powered by 0G Compute. Run locally in Docker.
+                  </p>
+                </div>
+              </button>
             </div>
+
             <button onClick={() => doStep(async () => {
               const res = await fetch("/api/fund/providers");
               const data = await res.json() as { providers?: Provider[]; error?: { message?: string } };
@@ -191,6 +294,23 @@ export const WizardView: FC<Props> = ({ onComplete }) => {
         {/* Fund step */}
         {step === "fund" && (
           <>
+            {/* Show wallet address */}
+            {walletAddresses?.evm && (
+              <div className="space-y-1">
+                <label className="block text-xs text-zinc-400">Your Wallet Address</label>
+                <div className="flex items-center gap-2 rounded-lg border border-white/[0.06] bg-zinc-900 px-3 py-2">
+                  <code className="flex-1 text-xs text-white font-mono break-all">{walletAddresses.evm}</code>
+                  <button
+                    onClick={() => copyToClipboard(walletAddresses.evm, "fund-evm")}
+                    className="shrink-0 rounded bg-zinc-800 px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-700 transition">
+                    {copied === "fund-evm" ? "Copied!" : "Copy"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <p className="text-xs text-zinc-500">Minimum 3 0G required to create a compute ledger</p>
+
             <div>
               <label className="block text-xs text-zinc-400 mb-1">Amount to deposit + fund (0G)</label>
               <input type="text" value={fundAmount} onChange={e => setFundAmount(e.target.value)}
@@ -235,6 +355,11 @@ export const WizardView: FC<Props> = ({ onComplete }) => {
                   startProxy: runtime === "claude-code",
                 });
 
+                // Best-effort agent launch if EchoClaw Agent was selected
+                if (startAgent) {
+                  try { await launchAgent(); } catch { /* agent start is best-effort */ }
+                }
+
                 setStep("done");
               })}
               className="w-full rounded-lg bg-neon-blue/20 py-2.5 text-sm font-medium text-neon-blue hover:bg-neon-blue/30 transition disabled:opacity-40">
@@ -248,7 +373,7 @@ export const WizardView: FC<Props> = ({ onComplete }) => {
       {stepIdx > 0 && (
         <button onClick={() => setStep(STEPS[stepIdx - 1].key)}
           className="mt-4 w-full text-center text-xs text-zinc-500 hover:text-zinc-300 transition">
-          ← Back
+          &larr; Back
         </button>
       )}
     </div>

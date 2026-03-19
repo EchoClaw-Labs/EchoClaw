@@ -121,14 +121,38 @@ export const WalletView: FC<Props> = ({ onNavigate }) => {
           summary={wallet?.evmKeystorePresent ? "Present" : "No keystore"}
           detail={trunc(wallet?.evmAddress ?? null)}
           action={{ label: wallet?.evmKeystorePresent ? "Import New" : "Create", onClick: () => setModal(wallet?.evmKeystorePresent ? "importEvm" : "createEvm") }}
-        />
+        >
+          {wallet?.evmAddress && (
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[11px] text-zinc-500 truncate">{wallet.evmAddress}</span>
+              <button
+                onClick={() => { navigator.clipboard.writeText(wallet.evmAddress!); showToast("Copied!"); }}
+                className="ml-auto flex-shrink-0 text-xs text-zinc-500 hover:text-white transition"
+              >
+                Copy
+              </button>
+            </div>
+          )}
+        </SetupCard>
         <SetupCard
           title="Solana Wallet"
           status={wallet?.solanaKeystorePresent ? "done" : "pending"}
           summary={wallet?.solanaKeystorePresent ? "Present" : "Not configured"}
           detail={trunc(wallet?.solanaAddress ?? null)}
           action={{ label: wallet?.solanaKeystorePresent ? "Import New" : "Create", onClick: () => setModal(wallet?.solanaKeystorePresent ? "importSol" : "createSol") }}
-        />
+        >
+          {wallet?.solanaAddress && (
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[11px] text-zinc-500 truncate">{wallet.solanaAddress}</span>
+              <button
+                onClick={() => { navigator.clipboard.writeText(wallet.solanaAddress!); showToast("Copied!"); }}
+                className="ml-auto flex-shrink-0 text-xs text-zinc-500 hover:text-white transition"
+              >
+                Copy
+              </button>
+            </div>
+          )}
+        </SetupCard>
       </div>
 
       <div className="flex gap-3 flex-wrap">

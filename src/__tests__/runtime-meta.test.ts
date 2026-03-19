@@ -18,8 +18,12 @@ const { runtimeLabel, RUNTIME_OPTIONS } = await import(
 );
 
 describe("runtimeLabel", () => {
-  it('returns "EchoClaw Agent" for openclaw', () => {
-    expect(runtimeLabel("openclaw")).toBe("EchoClaw Agent");
+  it('returns "OpenClaw" for openclaw', () => {
+    expect(runtimeLabel("openclaw")).toBe("OpenClaw");
+  });
+
+  it('returns "EchoClaw Agent" for echoclaw', () => {
+    expect(runtimeLabel("echoclaw")).toBe("EchoClaw Agent");
   });
 
   it('returns "Claude Code" for claude-code', () => {
@@ -46,14 +50,13 @@ describe("RUNTIME_OPTIONS", () => {
     expect(RUNTIME_OPTIONS).toHaveLength(4);
   });
 
-  it("first entry is openclaw and recommended", () => {
+  it("first entry is openclaw", () => {
     expect(RUNTIME_OPTIONS[0].key).toBe("openclaw");
-    expect(RUNTIME_OPTIONS[0].recommended).toBe(true);
   });
 
-  it("non-first entries are not recommended", () => {
-    for (const opt of RUNTIME_OPTIONS.slice(1)) {
-      expect(opt.recommended).toBe(false);
+  it("all entries have descriptions", () => {
+    for (const opt of RUNTIME_OPTIONS) {
+      expect(opt.description.length).toBeGreaterThan(0);
     }
   });
 });

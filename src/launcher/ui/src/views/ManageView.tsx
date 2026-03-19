@@ -100,7 +100,7 @@ export const ManageView: FC<Props> = ({ onNavigate }) => {
     { title: "Refresh from Network", summary: "Force refresh all status from on-chain data", action: { label: "Refresh", onClick: runRefresh } },
     { title: "Support Report", summary: "Generate redacted report for support", action: { label: "Generate", onClick: generateReport } },
     { title: "Fix Claude", summary: "Manage Claude proxy and config", action: { label: "Open", onClick: () => onNavigate("/claude") } },
-    { title: "Fix EchoClaw Setup", summary: "Run OpenClaw 8-step onboard", action: { label: "Open", onClick: () => onNavigate("/openclaw") } },
+    { title: "Fix OpenClaw", summary: "Run OpenClaw 8-step onboard", action: { label: "Open", onClick: () => onNavigate("/openclaw") } },
     { title: "Fix Skill Linking", summary: "Re-link EchoClaw skill to runtime", action: { label: "Open", onClick: () => onNavigate("/connect") } },
     { title: "Fix Compute Funding", summary: "Top up ledger or fund provider", action: { label: "Open", onClick: () => onNavigate("/fund") } },
   ];

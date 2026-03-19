@@ -149,13 +149,36 @@ export const DashboardView: FC<{ onNavigate: (path: string) => void }> = ({ onNa
   const cl = claudeStatus(snapshot);
   const m = monitorStatus(snapshot, daemons);
 
+  const [toast, setToast] = useState<string | null>(null);
+  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 4000); };
+
   const cards = [
-    { ...w, title: "Wallet", icon: <HugeiconsIcon icon={WalletIcon} size={18} />, path: "/wallet", actionLabel: w.status === "done" ? "Manage" : "Setup" },
-    { ...c, title: "Compute", icon: <HugeiconsIcon icon={CpuIcon} size={18} />, path: "/fund", actionLabel: c.status === "done" ? "View" : "Fund" },
-    { ...r, title: "Runtime", icon: <HugeiconsIcon icon={LinkIcon} size={18} />, path: "/connect", actionLabel: r.status === "done" ? "View" : "Connect" },
-    { ...cl, title: "Claude Proxy", icon: <HugeiconsIcon icon={ServerIcon} size={18} />, path: "/claude", actionLabel: "Manage" },
-    { ...m, title: "Monitor", icon: <HugeiconsIcon icon={ActivityIcon} size={18} />, path: "/manage", actionLabel: m.status === "done" ? "View" : "Setup" },
-    { status: "pending" as CardStatus, title: "Doctor", summary: "Run diagnostics", detail: "Check system health", icon: <HugeiconsIcon icon={ShieldIcon} size={18} />, path: "/manage", actionLabel: "Check" },
+    { ...w, title: "Wallet", icon: <HugeiconsIcon icon={WalletIcon} size={18} />, path: "/wallet", actionLabel: w.status === "done" ? "Manage" : "Setup",
+      copyAddresses: snapshot.wallet.evmAddress || snapshot.wallet.solanaAddress ? (
+        <div className="space-y-1">
+          {snapshot.wallet.evmAddress && (
+            <div className="flex items-center gap-2">
+              <span className="text-2xs text-zinc-600">EVM</span>
+              <span className="font-mono text-[11px] text-zinc-500 truncate">{snapshot.wallet.evmAddress}</span>
+              <button onClick={() => { navigator.clipboard.writeText(snapshot.wallet.evmAddress!); showToast("Copied!"); }}
+                className="ml-auto flex-shrink-0 text-xs text-zinc-500 hover:text-white transition">Copy</button>
+            </div>
+          )}
+          {snapshot.wallet.solanaAddress && (
+            <div className="flex items-center gap-2">
+              <span className="text-2xs text-zinc-600">SOL</span>
+              <span className="font-mono text-[11px] text-zinc-500 truncate">{snapshot.wallet.solanaAddress}</span>
+              <button onClick={() => { navigator.clipboard.writeText(snapshot.wallet.solanaAddress!); showToast("Copied!"); }}
+                className="ml-auto flex-shrink-0 text-xs text-zinc-500 hover:text-white transition">Copy</button>
+            </div>
+          )}
+        </div>
+      ) : null },
+    { ...c, title: "Compute", icon: <HugeiconsIcon icon={CpuIcon} size={18} />, path: "/fund", actionLabel: c.status === "done" ? "View" : "Fund", copyAddresses: null },
+    { ...r, title: "Runtime", icon: <HugeiconsIcon icon={LinkIcon} size={18} />, path: "/connect", actionLabel: r.status === "done" ? "View" : "Connect", copyAddresses: null },
+    { ...cl, title: "Claude Proxy", icon: <HugeiconsIcon icon={ServerIcon} size={18} />, path: "/claude", actionLabel: "Manage", copyAddresses: null },
+    { ...m, title: "Monitor", icon: <HugeiconsIcon icon={ActivityIcon} size={18} />, path: "/manage", actionLabel: m.status === "done" ? "View" : "Setup", copyAddresses: null },
+    { status: "pending" as CardStatus, title: "Doctor", summary: "Run diagnostics", detail: "Check system health", icon: <HugeiconsIcon icon={ShieldIcon} size={18} />, path: "/manage", actionLabel: "Check", copyAddresses: null },
   ];
 
   // Always render agent card — use fallback when API failed
@@ -374,6 +397,8 @@ export const DashboardView: FC<{ onNavigate: (path: string) => void }> = ({ onNa
         </div>
       </div>
 
+      {toast && <div className="fixed bottom-6 right-6 z-50 rounded-xl border border-white/[0.1] bg-zinc-900 px-4 py-3 text-sm text-zinc-200 shadow-lg">{toast}</div>}
+
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 stagger-children">
         {cards.map(card => (
           <SetupCard
@@ -388,6 +413,7 @@ export const DashboardView: FC<{ onNavigate: (path: string) => void }> = ({ onNa
               {card.icon}
               <span className="text-xs">{card.title} module</span>
             </div>
+            {card.copyAddresses}
           </SetupCard>
         ))}
       </div>

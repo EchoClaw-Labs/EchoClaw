@@ -187,7 +187,7 @@ export const OpenClawView: FC<Props> = ({ onNavigate }) => {
 
   return (
     <div className="mx-auto max-w-3xl px-5 py-8">
-      <PageHeader title="EchoClaw Setup" description={`${doneCount}/${steps.length} steps complete`} onBack={() => onNavigate("/")} />
+      <PageHeader title="OpenClaw Setup" description={`${doneCount}/${steps.length} steps complete`} onBack={() => onNavigate("/")} />
 
       {toast && <div className="fixed bottom-6 right-6 z-50 rounded-xl border border-white/[0.1] bg-zinc-900 px-4 py-3 text-sm text-zinc-200 shadow-lg">{toast}</div>}
 
@@ -216,7 +216,18 @@ export const OpenClawView: FC<Props> = ({ onNavigate }) => {
                     <h3 className="text-sm font-semibold text-white">{s.name}</h3>
                   </div>
                   <p className="text-xs text-zinc-500 mb-1">{s.description}</p>
-                  <p className={`text-xs ${s.status.configured ? "text-status-ok" : "text-zinc-400"}`}>{s.status.summary}</p>
+                  <p className={`text-xs ${s.status.configured ? "text-status-ok" : "text-zinc-400"}`}>
+                    {s.status.summary}
+                    {s.key === "wallet" && s.status.configured && s.status.summary && (() => {
+                      const match = s.status.summary.match(/0x[a-fA-F0-9]{40}/);
+                      return match ? (
+                        <button onClick={() => { navigator.clipboard.writeText(match[0]); showToast("Address copied!"); }}
+                          className="ml-2 rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400 hover:text-white hover:bg-zinc-700 transition">
+                          Copy
+                        </button>
+                      ) : null;
+                    })()}
+                  </p>
                   {s.status.warning && <p className="text-xs text-status-warn mt-1">{s.status.warning}</p>}
                 </div>
 

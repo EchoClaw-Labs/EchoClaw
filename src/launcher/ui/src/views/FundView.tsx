@@ -114,7 +114,19 @@ export const FundView: FC<Props> = ({ onNavigate }) => {
               summary={view.model ?? "No provider"}
               detail={view.provider ? `Selected AI model on 0G \u00b7 ${view.provider.slice(0, 10)}...` : "Select an AI model on 0G"}
               action={{ label: "Switch", onClick: loadProviders }}
-            />
+            >
+              {view.provider && (
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-[11px] text-zinc-500 truncate">{view.provider}</span>
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(view.provider!); showToast("Copied!"); }}
+                    className="ml-auto flex-shrink-0 text-xs text-zinc-500 hover:text-white transition"
+                  >
+                    Copy
+                  </button>
+                </div>
+              )}
+            </SetupCard>
           </div>
 
           {view.provider && (

@@ -30,7 +30,7 @@ jobs:
           set -euo pipefail
 
           PACKAGE="echoclaw/echo-agent"
-          ORG="desu777"
+          ORG="echoclaw-labs"
 
           VERSION_ROWS=$(gh api \
             -H "Accept: application/vnd.github+json" \

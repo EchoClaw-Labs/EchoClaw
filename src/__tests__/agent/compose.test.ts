@@ -17,7 +17,7 @@ describe("agent compose helpers", () => {
     const env = getAgentComposeEnv();
 
     expect(env.ECHO_CONFIG_DIR).toBeTruthy();
-    expect(env.ECHO_AGENT_IMAGE).toBe(`ghcr.io/desu777/echoclaw/echo-agent:${getAgentPackageVersion()}`);
+    expect(env.ECHO_AGENT_IMAGE).toBe(`ghcr.io/echoclaw-labs/echoclaw/echo-agent:${getAgentPackageVersion()}`);
   });
 
   it("prefers explicit image override", () => {
@@ -54,7 +54,7 @@ describe("agent compose helpers", () => {
     const failure = getAgentComposeFailureInfo(
       new AgentComposeError(
         "Docker compose failed.",
-        `Image ghcr.io/desu777/echoclaw/echo-agent:${getAgentPackageVersion()} Error error from registry: denied`,
+        `Image ghcr.io/echoclaw-labs/echoclaw/echo-agent:${getAgentPackageVersion()} Error error from registry: denied`,
       ),
       { defaultHint: "Is Docker running?" },
     );

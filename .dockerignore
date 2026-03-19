@@ -1,0 +1,12 @@
+node_modules/
+src/
+!src/agent/db/migrations/
+.git/
+.gitignore
+*.md
+*.log
+.env*
+!.env.example
+coverage/
+UIUX/
+fe.md

@@ -1,0 +1,107 @@
+{
+  "name": "@echoclaw/echo",
+  "version": "1.0.0",
+  "description": "EchoClaw CLI",
+  "publishConfig": {
+    "access": "public"
+  },
+  "bin": {
+    "echoclaw": "dist/cli.js"
+  },
+  "main": "dist/cli.js",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "dist/**",
+    "skills/**",
+    "docker/**",
+    "src/agent/db/migrations/**",
+    ".dockerignore",
+    "README.md",
+    "README_echo_agent.md",
+    "new_echo_text.png"
+  ],
+  "scripts": {
+    "prepack": "pnpm run build",
+    "clean": "node --input-type=commonjs -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "pnpm run clean && tsc && pnpm run build:launcher && pnpm run build:agent",
+    "build:launcher": "vite build --config src/launcher/ui/vite.config.ts",
+    "build:agent": "vite build --config src/agent/ui/vite.config.ts",
+    "dev": "tsc --watch",
+    "dev:launcher": "vite --config src/launcher/ui/vite.config.ts",
+    "dev:agent": "vite --config src/agent/ui/vite.config.ts",
+    "start": "node dist/cli.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@0gfoundation/0g-ts-sdk": "^1.2.1",
+    "@0glabs/0g-serving-broker": "^0.7.1",
+    "@hugeicons/core-free-icons": "^4.0.0",
+    "@hugeicons/react": "^1.1.6",
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-tooltip": "^1.2.8",
+    "@solana/spl-token": "^0.4.14",
+    "@solana/web3.js": "^1.98.4",
+    "@tavily/core": "^0.7.2",
+    "boxen": "^7.1.1",
+    "bs58": "^6.0.0",
+    "chalk": "^5.3.0",
+    "cli-table3": "^0.6.5",
+    "commander": "^12.1.0",
+    "ethers": "^6.13.1",
+    "figlet": "^1.8.0",
+    "gradient-string": "^2.0.2",
+    "inquirer": "^9.3.7",
+    "json5": "^2.2.3",
+    "markdown-to-jsx": "^9.7.9",
+    "node-cron": "^4.2.1",
+    "ora": "^8.1.1",
+    "pg": "^8.20.0",
+    "socket.io-client": "^4.8.3",
+    "viem": "2.45.1",
+    "winston": "^3.17.0"
+  },
+  "devDependencies": {
+    "@types/figlet": "^1.7.0",
+    "@types/gradient-string": "^1.1.6",
+    "@types/inquirer": "^9.0.7",
+    "@types/node": "^22.19.15",
+    "@types/node-cron": "^3.0.11",
+    "@types/pg": "^8.18.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^4.7.0",
+    "autoprefixer": "^10.4.27",
+    "clsx": "^2.1.1",
+    "motion": "^12.38.0",
+    "postcss": "^8.5.8",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "tailwind-merge": "^3.5.0",
+    "tailwindcss": "^3.4.19",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.21",
+    "vitest": "^1.6.0"
+  },
+  "keywords": [
+    "0g",
+    "defi",
+    "cli",
+    "blockchain",
+    "wallet"
+  ],
+  "author": "",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/desu777/EchoClaw.git"
+  },
+  "homepage": "https://github.com/desu777/EchoClaw",
+  "bugs": {
+    "url": "https://github.com/desu777/EchoClaw/issues"
+  },
+  "packageManager": "pnpm@10.32.1"
+}

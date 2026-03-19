@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Light mode (fallback) ─────────────────────────────── */
+:root {
+  --background: 0 0% 98%;
+  --foreground: 0 0% 4%;
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 4%;
+  --border: 240 6% 90%;
+  --muted: 240 5% 94%;
+  --muted-foreground: 240 4% 46%;
+  --accent: 217 91% 60%;
+  --accent-foreground: 0 0% 100%;
+  --radius: 0.75rem;
+}
+
+/* ── Dark mode (default/premium) ───────────────────────── */
+.dark {
+  --background: 0 0% 0%; /* Deep Void Black */
+  --foreground: 0 0% 98%;
+  --card: 0 0% 5%; /* Very subtle dark gray for cards */
+  --card-foreground: 0 0% 98%;
+  --border: 0 0% 12%; /* Subtle outlines */
+  --muted: 0 0% 10%;
+  --muted-foreground: 0 0% 60%;
+  --accent: 217 91% 60%; /* 0G Blue */
+  --accent-foreground: 0 0% 100%;
+}
+
+/* ── Base ──────────────────────────────────────────────── */
+body {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* { scrollbar-width: thin; scrollbar-color: hsl(var(--border)) transparent; }
+*::-webkit-scrollbar { width: 6px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 3px; }
+*::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.5); }
+::selection { background: hsl(var(--accent) / 0.3); }
+
+/* ── Animations ────────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+
+@keyframes waveSpinnerPulse {
+  0%, 100% {
+    transform: scale(0.6);
+    opacity: 0.3;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* ── View Transition (theme toggle) ────────────────────── */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}

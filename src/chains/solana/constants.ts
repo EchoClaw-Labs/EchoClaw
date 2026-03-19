@@ -1,0 +1,44 @@
+/**
+ * Solana well-known constants and token registry.
+ * Hardcoded top tokens for instant resolution without network calls.
+ */
+
+import type { TokenMetadata } from "../types.js";
+
+export const SOL_MINT = "So11111111111111111111111111111111111111112";
+export const SOL_DECIMALS = 9;
+export const SPL_TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+
+export const WELL_KNOWN_TOKENS: readonly TokenMetadata[] = [
+  { chain: "solana", address: SOL_MINT, symbol: "SOL", name: "Solana", decimals: 9 },
+  { chain: "solana", address: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", symbol: "USDC", name: "USD Coin", decimals: 6 },
+  { chain: "solana", address: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", symbol: "USDT", name: "Tether USD", decimals: 6 },
+  { chain: "solana", address: "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN", symbol: "JUP", name: "Jupiter", decimals: 6 },
+  { chain: "solana", address: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263", symbol: "BONK", name: "Bonk", decimals: 5 },
+  { chain: "solana", address: "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So", symbol: "mSOL", name: "Marinade Staked SOL", decimals: 9 },
+  { chain: "solana", address: "J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn", symbol: "jitoSOL", name: "Jito Staked SOL", decimals: 9 },
+  { chain: "solana", address: "bSo13r4TkiE4KumL71LsHTPpL2euBYLFx6h9HP3piy1", symbol: "bSOL", name: "BlazeStake Staked SOL", decimals: 9 },
+  { chain: "solana", address: "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs", symbol: "ETH", name: "Wrapped Ether (Wormhole)", decimals: 8 },
+  { chain: "solana", address: "3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh", symbol: "wBTC", name: "Wrapped BTC (Wormhole)", decimals: 8 },
+  { chain: "solana", address: "HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3", symbol: "PYTH", name: "Pyth Network", decimals: 6 },
+  { chain: "solana", address: "jtojtomepa8beP8AuQc6eXt5FriJwfFMwQx2v2f9mCL", symbol: "JTO", name: "Jito", decimals: 9 },
+  { chain: "solana", address: "WENWENvqqNya429ubCdR81ZmD69brwQaaBYY6p3LCpk", symbol: "WEN", name: "Wen", decimals: 5 },
+  { chain: "solana", address: "rndrizKT3MK1iimdxRdWabcF7Zg7AR5T4nud4EkHBof", symbol: "RNDR", name: "Render Token", decimals: 8 },
+  { chain: "solana", address: "27G8MtK7VtTcCHkpASjSDdkWWYfoqT6ggEuKidVJidD4", symbol: "JLP", name: "Jupiter Perps LP", decimals: 6 },
+] as const;
+
+const bySymbol = new Map<string, TokenMetadata>();
+const byMint = new Map<string, TokenMetadata>();
+
+for (const token of WELL_KNOWN_TOKENS) {
+  bySymbol.set(token.symbol.toLowerCase(), token);
+  byMint.set(token.address, token);
+}
+
+export function getWellKnownBySymbol(symbol: string): TokenMetadata | undefined {
+  return bySymbol.get(symbol.toLowerCase());
+}
+
+export function getWellKnownByMint(mint: string): TokenMetadata | undefined {
+  return byMint.get(mint);
+}

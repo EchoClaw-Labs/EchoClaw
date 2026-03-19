@@ -1,0 +1,70 @@
+name: Cleanup Old GHCR Images
+
+on:
+  workflow_dispatch:
+
+permissions:
+  packages: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get current version
+        id: meta
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Delete old image versions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CURRENT_VERSION: ${{ steps.meta.outputs.version }}
+          KEEP_RECENT: "10"
+        run: |
+          set -euo pipefail
+
+          PACKAGE="echoclaw/echo-agent"
+          ORG="desu777"
+
+          VERSION_ROWS=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/users/${ORG}/packages/container/${PACKAGE}/versions" \
+            --paginate \
+            --jq '.[] | [.created_at, (.id|tostring), ((.metadata.container.tags // []) | join(","))] | @tsv' \
+            2>/dev/null || true)
+
+          if [ -z "$VERSION_ROWS" ]; then
+            echo "No versions found or package does not exist yet."
+            exit 0
+          fi
+
+          SORTED_ROWS=$(printf '%s\n' "$VERSION_ROWS" | sort -r)
+          KEPT_RECENT=0
+
+          while IFS=$'\t' read -r CREATED_AT VERSION_ID TAGS; do
+            [ -n "$VERSION_ID" ] || continue
+
+            if echo "$TAGS" | grep -qE "(^|,)latest(,|$)"; then
+              echo "Keeping version ${VERSION_ID} (tagged: ${TAGS})"
+              continue
+            fi
+            if echo "$TAGS" | grep -qE "(^|,)${CURRENT_VERSION}(,|$)"; then
+              echo "Keeping version ${VERSION_ID} (tagged: ${TAGS})"
+              continue
+            fi
+
+            if [ "$KEPT_RECENT" -lt "$KEEP_RECENT" ]; then
+              KEPT_RECENT=$((KEPT_RECENT + 1))
+              echo "Keeping recent version ${VERSION_ID} (${CREATED_AT}, tags: ${TAGS})"
+              continue
+            fi
+
+            echo "Deleting version ${VERSION_ID} (${CREATED_AT}, tags: ${TAGS})"
+            gh api \
+              --method DELETE \
+              -H "Accept: application/vnd.github+json" \
+              "/users/${ORG}/packages/container/${PACKAGE}/versions/${VERSION_ID}" || true
+          done <<< "$SORTED_ROWS"

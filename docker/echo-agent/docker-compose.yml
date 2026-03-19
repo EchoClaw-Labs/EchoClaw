@@ -1,0 +1,43 @@
+# Echo Agent Docker Stack
+# 2 services: agent + postgres (web search via Tavily API)
+
+services:
+  # --- Echo Agent (Node.js) ---
+  agent:
+    image: ${ECHO_AGENT_IMAGE:-ghcr.io/desu777/echoclaw/echo-agent:latest}
+    ports:
+      - "${AGENT_PORT:-4201}:4201"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AGENT_DB_URL: postgresql://echo_agent:${AGENT_POSTGRES_PASSWORD:-echo_agent}@postgres:5432/echo_agent
+      ECHO_KEYSTORE_PASSWORD: ${ECHO_KEYSTORE_PASSWORD:-}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      NODE_ENV: production
+    volumes:
+      - ${ECHO_CONFIG_DIR:-~/.config/echoclaw}:/root/.config/echoclaw
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4201/api/agent/health').then((res) => process.exit(res.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # --- Postgres 16 (all agent data) ---
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: echo_agent
+      POSTGRES_USER: echo_agent
+      POSTGRES_PASSWORD: ${AGENT_POSTGRES_PASSWORD:-echo_agent}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U echo_agent"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pgdata:

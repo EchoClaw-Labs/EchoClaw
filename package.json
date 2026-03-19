@@ -1,6 +1,6 @@
 {
   "name": "@echoclaw/echo",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "EchoClaw CLI",
   "publishConfig": {
     "access": "public"

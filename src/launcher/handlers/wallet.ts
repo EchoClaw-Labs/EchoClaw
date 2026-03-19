@@ -48,6 +48,19 @@ const handleCreate: RouteHandler = async (_req, res, params) => {
   const chain = (params.body?.chain as string) ?? "evm";
   const force = params.body?.force === true;
 
+  // Safety guard: if keystore exists and force was not explicitly requested,
+  // ask the frontend for confirmation instead of overwriting silently.
+  if (!force) {
+    const exists = chain === "solana" ? solanaKeystoreExists() : keystoreExists();
+    if (exists) {
+      jsonResponse(res, 200, {
+        phase: "wallet", status: "confirm_required", reason: "keystore_exists",
+        message: `A ${chain.toUpperCase()} keystore already exists. Creating a new wallet will overwrite it. A backup will be created automatically.`,
+      });
+      return;
+    }
+  }
+
   if (chain === "solana") {
     const result = await createSolanaWallet({ force });
     jsonResponse(res, 200, {
@@ -75,6 +88,19 @@ const handleImport: RouteHandler = async (_req, res, params) => {
   if (!privateKey || typeof privateKey !== "string") {
     errorResponse(res, 400, "MISSING_KEY", "privateKey is required.");
     return;
+  }
+
+  // Safety guard: if keystore exists and force was not explicitly requested,
+  // ask the frontend for confirmation instead of overwriting silently.
+  if (!force) {
+    const exists = chain === "solana" ? solanaKeystoreExists() : keystoreExists();
+    if (exists) {
+      jsonResponse(res, 200, {
+        phase: "wallet", status: "confirm_required", reason: "keystore_exists",
+        message: `A ${chain.toUpperCase()} keystore already exists. Importing will overwrite it. A backup will be created automatically.`,
+      });
+      return;
+    }
   }
 
   if (chain === "solana") {

@@ -19,6 +19,11 @@ async function fetchApi<T>(path: string, opts?: RequestInit): Promise<T> {
   return data as T;
 }
 
+/** Shared POST helper — replaces per-view local `postApi` functions. */
+export async function postApi<T>(path: string, body: unknown): Promise<T> {
+  return fetchApi<T>(path, { method: "POST", body: JSON.stringify(body) });
+}
+
 // ── Status & Routing ─────────────────────────────────────────────
 
 export interface RoutingDecision {
@@ -33,6 +38,21 @@ export function getRouting(): Promise<RoutingDecision> {
 export function getSnapshot(fresh = false): Promise<Record<string, unknown>> {
   const qs = fresh ? "?fresh=1" : "";
   return fetchApi(`/api/snapshot${qs}`);
+}
+
+export interface VerifyResult {
+  phase: string;
+  status: string;
+  summary: string;
+  runtime?: string | null;
+  nextAction?: string | null;
+  warnings?: string[];
+  manualSteps?: string[];
+}
+
+export function getVerify(runtime?: string): Promise<VerifyResult> {
+  const qs = runtime ? `?runtime=${encodeURIComponent(runtime)}` : "";
+  return fetchApi(`/api/verify${qs}`);
 }
 
 // ── Catalog ──────────────────────────────────────────────────────

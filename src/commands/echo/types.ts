@@ -25,6 +25,7 @@ export interface FundView {
   outputPricePerMTokens: string | null;
   recommendedMinLockedOg: number | null;
   currentLockedOg: number | null;
+  subAccountExists: boolean;
   acknowledged: boolean | null;
   monitorRunning: boolean;
   monitorTrackingProvider: boolean;

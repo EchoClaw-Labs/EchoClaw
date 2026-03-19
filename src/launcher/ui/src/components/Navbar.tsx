@@ -41,7 +41,7 @@ const NAV_SECTIONS: NavSection[] = [
     label: "Manage",
     links: [
       { label: "Claude Proxy", path: "/claude", description: "Config, proxy, settings" },
-      { label: "OpenClaw Setup", path: "/openclaw", description: "8-step onboard wizard" },
+      { label: "EchoClaw Setup", path: "/openclaw", description: "8-step onboard wizard" },
       { label: "Diagnostics", path: "/manage", description: "Doctor, verify, support" },
     ],
   },

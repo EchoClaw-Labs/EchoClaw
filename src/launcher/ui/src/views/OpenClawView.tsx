@@ -1,15 +1,12 @@
 import { type FC, useEffect, useState, useCallback } from "react";
 import { PageHeader } from "../components/PageHeader";
+import { ActionModal } from "../components/ActionModal";
 import { WaveSpinner } from "../components/WaveSpinner";
 import { cn } from "../utils";
+import { postApi } from "../api";
 
 interface StepStatus { configured: boolean; summary: string; warning?: string }
 interface StepInfo { key: string; name: string; description: string; status: StepStatus }
-
-async function postApi(path: string, body: Record<string, unknown> = {}) {
-  const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  return res.json() as Promise<Record<string, unknown>>;
-}
 
 interface Provider { provider: string; model: string; inputPricePerMTokens: string; outputPricePerMTokens: string }
 
@@ -55,6 +52,11 @@ export const OpenClawView: FC<Props> = ({ onNavigate }) => {
   const [gatewayMethods, setGatewayMethods] = useState<string[]>(["skip"]);
   const [gatewayInfo, setGatewayInfo] = useState<{ isContainer: boolean; composePath: string | null } | null>(null);
 
+  // Overwrite confirmation flow
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [confirmMessage, setConfirmMessage] = useState("");
+  const [pendingAction, setPendingAction] = useState<{ key: string; endpoint: string; body: Record<string, unknown> } | null>(null);
+
   const refresh = useCallback(async () => {
     try {
       const res = await fetch("/api/openclaw/status");
@@ -67,6 +69,21 @@ export const OpenClawView: FC<Props> = ({ onNavigate }) => {
   useEffect(() => { refresh(); }, [refresh]);
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 4000); };
+
+  const confirmOverwrite = async () => {
+    if (!pendingAction) return;
+    const { key, endpoint, body } = pendingAction;
+    setPendingAction(null);
+    setShowConfirm(false);
+    setBusy(key);
+    try {
+      const r = await postApi<Record<string, unknown>>(endpoint, body);
+      showToast(`${key}: ${(r.message as string) ?? (r.summary as string) ?? (r.action as string) ?? "done"}`);
+      setExpandedStep(null);
+      await refresh();
+    } catch { showToast(`${key} failed`); }
+    finally { setBusy(null); }
+  };
 
   const getFormValue = (stepKey: string, fieldKey: string, defaultValue = ""): string => {
     return formData[stepKey]?.[fieldKey] ?? defaultValue;
@@ -123,7 +140,14 @@ export const OpenClawView: FC<Props> = ({ onNavigate }) => {
         if (mode === "import") {
           const privateKey = body.privateKey as string;
           if (!privateKey) { showToast("Private key is required for import"); setBusy(null); return; }
-          const r = await postApi("/api/wallet/import", { chain, privateKey, force: true });
+          const r = await postApi<Record<string, unknown>>("/api/wallet/import", { chain, privateKey, force: false });
+          if (r.status === "confirm_required") {
+            setPendingAction({ key, endpoint: "/api/wallet/import", body: { chain, privateKey, force: true } });
+            setConfirmMessage((r.message as string) ?? "A keystore already exists. Proceeding will overwrite it.");
+            setShowConfirm(true);
+            setBusy(null);
+            return;
+          }
           showToast((r.summary as string) ?? "Wallet imported");
           setExpandedStep(null); await refresh(); setBusy(null); return;
         }
@@ -137,7 +161,15 @@ export const OpenClawView: FC<Props> = ({ onNavigate }) => {
         body = { provider: computeProvider, depositAmount: computeDeposit, fundAmount: computeFund };
       }
 
-      const r = await postApi(`/api/openclaw/step/${key}`, body);
+      const r = await postApi<Record<string, unknown>>(`/api/openclaw/step/${key}`, body);
+      // Backend returns confirm_required when a keystore already exists
+      if (r.status === "confirm_required") {
+        setPendingAction({ key, endpoint: `/api/openclaw/step/${key}`, body: { ...body, force: true } });
+        setConfirmMessage((r.message as string) ?? "A keystore already exists. Proceeding will overwrite it.");
+        setShowConfirm(true);
+        setBusy(null);
+        return;
+      }
       if (r.error) {
         showToast(`${key}: ${(r.error as { message?: string })?.message ?? "failed"}`);
       } else {
@@ -155,7 +187,7 @@ export const OpenClawView: FC<Props> = ({ onNavigate }) => {
 
   return (
     <div className="mx-auto max-w-3xl px-5 py-8">
-      <PageHeader title="OpenClaw Setup" description={`${doneCount}/${steps.length} steps complete`} onBack={() => onNavigate("/")} />
+      <PageHeader title="EchoClaw Setup" description={`${doneCount}/${steps.length} steps complete`} onBack={() => onNavigate("/")} />
 
       {toast && <div className="fixed bottom-6 right-6 z-50 rounded-xl border border-white/[0.1] bg-zinc-900 px-4 py-3 text-sm text-zinc-200 shadow-lg">{toast}</div>}
 
@@ -353,6 +385,23 @@ export const OpenClawView: FC<Props> = ({ onNavigate }) => {
           Refresh Status
         </button>
       </div>
+
+      {/* Overwrite confirmation modal */}
+      <ActionModal open={showConfirm} onClose={() => { setShowConfirm(false); setPendingAction(null); }} title="Overwrite existing wallet?">
+        <div className="space-y-4">
+          <p className="text-sm text-zinc-400">{confirmMessage}</p>
+          <div className="flex gap-3">
+            <button onClick={() => { setShowConfirm(false); setPendingAction(null); }}
+              className="flex-1 rounded-lg bg-zinc-800 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-700 transition">
+              Cancel
+            </button>
+            <button disabled={busy !== null} onClick={confirmOverwrite}
+              className="flex-1 rounded-lg bg-status-warn/20 py-2 text-sm font-medium text-status-warn hover:bg-status-warn/30 transition disabled:opacity-40">
+              {busy !== null ? "Overwriting..." : "Overwrite"}
+            </button>
+          </div>
+        </div>
+      </ActionModal>
     </div>
   );
 };

@@ -59,7 +59,10 @@ export async function buildFundView(opts?: {
     ? calculateProviderPricing(selected.inputPrice, selected.outputPrice)
     : null;
   const subAccount = provider ? await getSubAccountBalance(broker, provider) : null;
-  const acknowledged = provider ? await isProviderAcked(broker, provider) : null;
+  const subAccountExists = subAccount !== null;
+  const acknowledged = provider && subAccountExists
+    ? await isProviderAcked(broker, provider)
+    : null;
   const monitorRunning = getMonitorPid() != null;
 
   return {
@@ -73,6 +76,7 @@ export async function buildFundView(opts?: {
     outputPricePerMTokens: selected ? formatPricePerMTokens(selected.outputPrice) : null,
     recommendedMinLockedOg: pricing?.recommendedMinLockedOg ?? null,
     currentLockedOg: subAccount?.lockedOg ?? null,
+    subAccountExists,
     acknowledged,
     monitorRunning,
     monitorTrackingProvider: provider ? isMonitorTrackingProvider(provider) : false,

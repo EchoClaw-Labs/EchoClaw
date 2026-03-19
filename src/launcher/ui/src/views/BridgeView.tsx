@@ -1,17 +1,14 @@
 import { type FC, useEffect, useState } from "react";
+import { parseUnits } from "viem";
 import { PageHeader } from "../components/PageHeader";
 import { WaveSpinner } from "../components/WaveSpinner";
+import { postApi } from "../api";
 
 interface Chain { id: number; name: string; type: string }
 interface Token { address: string; symbol: string; name: string; decimals: number }
 interface Route { routeId: string; quote: { amountOut: string; expectedDurationSeconds: number }; depositMethods: string[] }
 
 type Step = "chains" | "quoting" | "routes" | "preview";
-
-async function postApi(path: string, body: Record<string, unknown>) {
-  const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  return res.json() as Promise<Record<string, unknown>>;
-}
 
 interface Props { onNavigate: (p: string) => void }
 
@@ -56,12 +53,33 @@ export const BridgeView: FC<Props> = ({ onNavigate }) => {
   };
 
   const getQuotes = async () => {
+    // Validate amount before requesting quotes
+    const trimmed = amount.trim();
+    if (!trimmed || !/^\d+(\.\d+)?$/.test(trimmed)) {
+      showToast("Invalid amount — enter a valid number"); return;
+    }
+    if (Number(trimmed) <= 0) {
+      showToast("Amount must be greater than 0"); return;
+    }
+
+    const selectedTokenObj = srcTokens.find(t => t.address === srcToken);
+    if (!selectedTokenObj) {
+      showToast("Source token not found"); return;
+    }
+
+    let amountSmallest: string;
+    try {
+      amountSmallest = parseUnits(trimmed, selectedTokenObj.decimals).toString();
+    } catch {
+      showToast("Invalid amount for this token's decimals"); return;
+    }
+
     setBusy(true);
     try {
       const data = await postApi("/api/bridge/quote", {
         fromChain: String(srcChain), fromToken: srcToken,
         toChain: String(dstChain), toToken: dstToken,
-        amount, tradeType: "EXACT_INPUT",
+        amount: amountSmallest, tradeType: "EXACT_INPUT",
       });
       setRoutes((data.routes as Route[]) ?? []);
       setBestIdx((data.bestIndex as number) ?? 0);

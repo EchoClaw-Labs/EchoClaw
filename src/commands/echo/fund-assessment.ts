@@ -47,6 +47,23 @@ export function buildFundPayload(view: FundView, runtimeHint?: ProviderName): Ec
     };
   }
 
+  if (view.provider && !view.subAccountExists) {
+    return {
+      phase: "fund",
+      status: "needs_action",
+      runtime,
+      recommendedRuntime: autoDetectProvider().name,
+      summary: "Fund the selected model to create a provider account.",
+      nextAction: "fund_provider",
+      reasonCode: ErrorCodes.ZG_INSUFFICIENT_BALANCE,
+      allowedAutoActions: ["deposit_ledger", "fund_provider"],
+      requiresApproval: ["funds"],
+      warnings,
+      manualSteps: [],
+      view,
+    };
+  }
+
   if (view.recommendedMinLockedOg != null && view.currentLockedOg != null && view.currentLockedOg < view.recommendedMinLockedOg) {
     return {
       phase: "fund",

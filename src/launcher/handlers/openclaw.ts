@@ -160,11 +160,25 @@ const handleWebhooks: RouteHandler = async (_req, res, params) => {
 
 const handleWallet: RouteHandler = async (_req, res, params) => {
   const chain = (params.body?.chain as string) ?? "evm";
+  const force = params.body?.force === true;
   try {
+    // Safety guard: if keystore exists and force was not explicitly requested,
+    // ask the frontend for confirmation instead of overwriting silently.
+    if (!force) {
+      const exists = chain === "solana" ? solanaKeystoreExists() : keystoreExists();
+      if (exists) {
+        jsonResponse(res, 200, {
+          phase: "openclaw", status: "confirm_required", step: "wallet",
+          reason: "keystore_exists",
+          message: `A ${chain.toUpperCase()} keystore already exists. Creating a new wallet will overwrite it. A backup will be created automatically.`,
+        });
+        return;
+      }
+    }
+
     if (chain === "solana") {
-      const forceCreate = solanaKeystoreExists();
       const { createSolanaWallet } = await import("../../wallet/solana-create.js");
-      const result = await createSolanaWallet({ force: forceCreate });
+      const result = await createSolanaWallet({ force });
       logger.info(`[launcher] openclaw solana wallet created: ${result.address}`);
       jsonResponse(res, 200, {
         phase: "openclaw", status: "applied", step: "wallet",
@@ -172,8 +186,7 @@ const handleWallet: RouteHandler = async (_req, res, params) => {
         address: result.address,
       });
     } else {
-      const forceCreate = keystoreExists();
-      const result = await createWallet({ force: forceCreate });
+      const result = await createWallet({ force });
       logger.info(`[launcher] openclaw wallet created: ${result.address}`);
       jsonResponse(res, 200, {
         phase: "openclaw", status: "applied", step: "wallet",

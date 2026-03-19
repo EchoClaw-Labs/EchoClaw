@@ -3,6 +3,7 @@ import { PageHeader } from "../components/PageHeader";
 import { SetupCard } from "../components/SetupCard";
 import { ActionModal } from "../components/ActionModal";
 import { WaveSpinner } from "../components/WaveSpinner";
+import { postApi } from "../api";
 
 interface ClaudeHealth {
   configured: boolean; running: boolean; healthy: boolean;
@@ -13,11 +14,6 @@ interface ClaudeHealth {
 }
 
 type ModalType = "inject" | "remove" | "restore" | null;
-
-async function postApi(path: string, body: Record<string, unknown> = {}) {
-  const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  return res.json() as Promise<Record<string, unknown>>;
-}
 
 interface Props { onNavigate: (p: string) => void }
 

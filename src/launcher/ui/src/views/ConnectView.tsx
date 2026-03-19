@@ -1,15 +1,24 @@
-import { type FC, useEffect, useState, useCallback } from "react";
+import { type FC, useEffect, useState, useCallback, useRef } from "react";
 import { PageHeader } from "../components/PageHeader";
 import { SetupCard } from "../components/SetupCard";
 import { ActionModal } from "../components/ActionModal";
 import { WaveSpinner } from "../components/WaveSpinner";
-import { getSnapshot } from "../api";
+import { getSnapshot, postApi } from "../api";
+import { runtimeLabel, RUNTIME_OPTIONS } from "../utils/runtime-meta";
 
 interface Props { onNavigate: (p: string) => void }
+type EchoScope = "project" | "user";
 
-async function postApi(path: string, body: Record<string, unknown>) {
-  const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  return res.json() as Promise<Record<string, unknown>>;
+interface RuntimeSnapshot {
+  runtimes?: { detected: Record<string, { detected: boolean }>; recommended: string };
+}
+
+interface ConnectResult extends Record<string, unknown> {
+  defaultScope?: EchoScope;
+}
+
+function isEchoScope(value: unknown): value is EchoScope {
+  return value === "project" || value === "user";
 }
 
 export const ConnectView: FC<Props> = ({ onNavigate }) => {
@@ -17,10 +26,15 @@ export const ConnectView: FC<Props> = ({ onNavigate }) => {
   const [loading, setLoading] = useState(true);
   const [showApply, setShowApply] = useState(false);
   const [runtime, setRuntime] = useState("openclaw");
-  const [scope, setScope] = useState("project");
+  const [scope, setScope] = useState<EchoScope>("project");
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [result, setResult] = useState<Record<string, unknown> | null>(null);
+  const [result, setResult] = useState<ConnectResult | null>(null);
+  const [allowWalletMutation, setAllowWalletMutation] = useState(false);
+  const [claudeScope, setClaudeScope] = useState<string>("project-local");
+  const [startProxy, setStartProxy] = useState(true);
+  const [bootstrapped, setBootstrapped] = useState(false);
+  const scopeTouchedRef = useRef(false);
 
   const refresh = useCallback(async () => {
     try { setSnapshot(await getSnapshot(true)); } catch { /* */ }
@@ -34,10 +48,35 @@ export const ConnectView: FC<Props> = ({ onNavigate }) => {
   const runtimes = (snapshot?.runtimes as { detected: Record<string, { detected: boolean }>; recommended: string }) ?? { detected: {}, recommended: "openclaw" };
   const detected = Object.entries(runtimes.detected);
 
+  useEffect(() => {
+    if (bootstrapped || !snapshot) return;
+    const recommended = (snapshot as RuntimeSnapshot).runtimes?.recommended;
+    if (typeof recommended === "string" && recommended.length > 0) {
+      scopeTouchedRef.current = false;
+      setRuntime(recommended);
+    }
+    setBootstrapped(true);
+  }, [bootstrapped, snapshot]);
+
+  useEffect(() => {
+    if (!bootstrapped) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await postApi<ConnectResult>("/api/connect/plan", { runtime });
+        if (cancelled || scopeTouchedRef.current) return;
+        if (isEchoScope(r.defaultScope)) {
+          setScope(r.defaultScope);
+        }
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [runtime, bootstrapped]);
+
   const doPlan = async () => {
     setBusy(true);
     try {
-      const r = await postApi("/api/connect/plan", { runtime, scope });
+      const r = await postApi<ConnectResult>("/api/connect/plan", { runtime, scope });
       setResult(r);
     } catch { showToast("Error"); }
     finally { setBusy(false); }
@@ -46,9 +85,10 @@ export const ConnectView: FC<Props> = ({ onNavigate }) => {
   const doApply = async () => {
     setBusy(true);
     try {
-      const r = await postApi("/api/connect/apply", {
+      const r = await postApi<ConnectResult>("/api/connect/apply", {
         runtime, scope, force: false,
-        allowWalletMutation: true, claudeScope: "project-local", startProxy: true,
+        ...(allowWalletMutation ? { allowWalletMutation: true } : {}),
+        claudeScope, startProxy,
       });
       setResult(r);
       showToast((r.summary as string) ?? "Applied");
@@ -70,7 +110,7 @@ export const ConnectView: FC<Props> = ({ onNavigate }) => {
         {detected.map(([name, info]) => (
           <SetupCard
             key={name}
-            title={name === "claude-code" ? "Claude Code" : name === "openclaw" ? "OpenClaw" : name.charAt(0).toUpperCase() + name.slice(1)}
+            title={runtimeLabel(name)}
             status={(info as { detected: boolean }).detected ? "done" : "pending"}
             summary={(info as { detected: boolean }).detected ? "Detected" : "Not detected"}
             detail={name === runtimes.recommended ? "Recommended" : ""}
@@ -84,10 +124,14 @@ export const ConnectView: FC<Props> = ({ onNavigate }) => {
           <div>
             <label className="block text-xs text-zinc-400 mb-2">Runtime</label>
             <div className="space-y-2">
-              {["openclaw", "claude-code", "codex", "other"].map(rt => (
-                <label key={rt} className={`flex items-center gap-3 rounded-xl border p-2.5 cursor-pointer transition text-sm ${runtime === rt ? "border-neon-blue/50 bg-neon-blue/5 text-white" : "border-white/[0.06] text-zinc-400"}`}>
-                  <input type="radio" name="rt" checked={runtime === rt} onChange={() => setRuntime(rt)} className="accent-neon-blue" />
-                  {rt === "openclaw" ? "OpenClaw" : rt === "claude-code" ? "Claude Code" : rt === "codex" ? "Codex" : "Other"}
+              {RUNTIME_OPTIONS.map(opt => (
+                <label key={opt.key} className={`flex items-center gap-3 rounded-xl border p-2.5 cursor-pointer transition text-sm ${runtime === opt.key ? "border-neon-blue/50 bg-neon-blue/5 text-white" : "border-white/[0.06] text-zinc-400"}`}>
+                  <input type="radio" name="rt" checked={runtime === opt.key} onChange={() => {
+                    scopeTouchedRef.current = false;
+                    setResult(null);
+                    setRuntime(opt.key);
+                  }} className="accent-neon-blue" />
+                  {opt.label}
                 </label>
               ))}
             </div>
@@ -97,13 +141,48 @@ export const ConnectView: FC<Props> = ({ onNavigate }) => {
             <div className="space-y-2">
               {["project", "user"].map(s => (
                 <label key={s} className={`flex items-center gap-3 rounded-xl border p-2.5 cursor-pointer transition text-sm ${scope === s ? "border-neon-blue/50 bg-neon-blue/5 text-white" : "border-white/[0.06] text-zinc-400"}`}>
-                  <input type="radio" name="scope" checked={scope === s} onChange={() => setScope(s)} className="accent-neon-blue" />
+                  <input type="radio" name="scope" checked={scope === s} onChange={() => {
+                    scopeTouchedRef.current = true;
+                    setResult(null);
+                    setScope(s as EchoScope);
+                  }} className="accent-neon-blue" />
                   {s.charAt(0).toUpperCase() + s.slice(1)}
                 </label>
               ))}
             </div>
           </div>
         </div>
+
+        {/* Wallet mutation checkbox */}
+        <div className="mb-4">
+          <label className="flex items-center gap-3 text-sm text-zinc-400 cursor-pointer">
+            <input type="checkbox" checked={allowWalletMutation} onChange={e => setAllowWalletMutation(e.target.checked)} className="accent-neon-blue" />
+            Create wallet if needed
+          </label>
+        </div>
+
+        {/* Claude-code specific options */}
+        {runtime === "claude-code" && (
+          <div className="rounded-xl border border-white/[0.06] bg-zinc-900/40 p-4 mb-4 space-y-4">
+            <h4 className="text-xs font-semibold text-zinc-300">Claude Code Options</h4>
+            <div>
+              <label className="block text-xs text-zinc-400 mb-2">Claude Scope</label>
+              <div className="space-y-2">
+                {(["project-local", "project-shared", "user"] as const).map(cs => (
+                  <label key={cs} className={`flex items-center gap-3 rounded-xl border p-2.5 cursor-pointer transition text-sm ${claudeScope === cs ? "border-neon-blue/50 bg-neon-blue/5 text-white" : "border-white/[0.06] text-zinc-400"}`}>
+                    <input type="radio" name="claudeScope" checked={claudeScope === cs} onChange={() => setClaudeScope(cs)} className="accent-neon-blue" />
+                    {cs}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <label className="flex items-center gap-3 text-sm text-zinc-400 cursor-pointer">
+              <input type="checkbox" checked={startProxy} onChange={e => setStartProxy(e.target.checked)} className="accent-neon-blue" />
+              Start proxy
+            </label>
+          </div>
+        )}
+
         <div className="flex gap-3">
           <button disabled={busy} onClick={doPlan}
             className="rounded-lg bg-zinc-800/80 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-700 transition disabled:opacity-40">
@@ -133,7 +212,7 @@ export const ConnectView: FC<Props> = ({ onNavigate }) => {
       <ActionModal open={showApply} onClose={() => setShowApply(false)} title="Apply Connection">
         <div className="space-y-4">
           <p className="text-sm text-zinc-400">
-            This will link the EchoClaw skill for <strong className="text-white">{runtime}</strong> in <strong className="text-white">{scope}</strong> scope.
+            This will link the EchoClaw skill for <strong className="text-white">{runtimeLabel(runtime)}</strong> in <strong className="text-white">{scope}</strong> scope.
             {runtime === "claude-code" && " It will also inject Claude settings and start the proxy."}
           </p>
           <button disabled={busy} onClick={doApply}

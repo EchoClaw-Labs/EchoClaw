@@ -1,8 +1,8 @@
 import { type FC, useState, useEffect, useCallback } from "react";
 import { WaveSpinner } from "../components/WaveSpinner";
-import { getSnapshot } from "../api";
-
-type WizardStep = "password" | "wallet" | "runtime" | "provider" | "fund" | "finalize" | "done";
+import { getRouting, getSnapshot, postApi } from "../api";
+import { RUNTIME_OPTIONS } from "../utils/runtime-meta";
+import { deriveWizardBootstrapStep, type WizardStep } from "../utils/wizard-bootstrap";
 
 const STEPS: { key: WizardStep; title: string; num: number }[] = [
   { key: "password", title: "Set Password", num: 1 },
@@ -14,11 +14,6 @@ const STEPS: { key: WizardStep; title: string; num: number }[] = [
 ];
 
 interface Provider { provider: string; model: string; inputPricePerMTokens: string; outputPricePerMTokens: string }
-
-async function postApi(path: string, body: Record<string, unknown>) {
-  const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  return res.json();
-}
 
 interface Props { onComplete: () => void }
 
@@ -39,21 +34,26 @@ export const WizardView: FC<Props> = ({ onComplete }) => {
 
   // Skip already-done steps based on snapshot
   useEffect(() => {
-    getSnapshot().then(snap => {
-      const s = snap as { wallet?: { password?: { status: string }; evmKeystorePresent?: boolean }; compute?: { state?: { activeProvider?: string } } };
-      if (s.wallet?.password?.status === "ready" || s.wallet?.password?.status === "drift") {
-        if (s.wallet?.evmKeystorePresent) {
-          if (s.compute?.state?.activeProvider) {
-            setStep("done");
-          } else {
-            setStep("runtime");
-          }
-        } else {
-          setStep("wallet");
+    let cancelled = false;
+    Promise.allSettled([getSnapshot(), getRouting()]).then(([snapshotResult, routingResult]) => {
+      if (cancelled) return;
+      const snapshot = snapshotResult.status === "fulfilled"
+        ? snapshotResult.value as {
+          wallet?: { password?: { status?: string }; evmKeystorePresent?: boolean };
+          runtimes?: { recommended?: string };
         }
+        : null;
+      const routing = routingResult.status === "fulfilled" ? routingResult.value : null;
+
+      const recommended = snapshot?.runtimes?.recommended;
+      if (typeof recommended === "string" && recommended.length > 0) {
+        setRuntime(recommended);
       }
+
+      setStep(deriveWizardBootstrapStep(snapshot, routing));
       setLoading(false);
     }).catch(() => setLoading(false));
+    return () => { cancelled = true; };
   }, []);
 
   const doStep = useCallback(async (action: () => Promise<void>) => {
@@ -144,20 +144,22 @@ export const WizardView: FC<Props> = ({ onComplete }) => {
         {step === "runtime" && (
           <>
             <div className="space-y-2">
-              {["openclaw", "claude-code", "codex", "other"].map(rt => (
-                <label key={rt} className={`flex items-center gap-3 rounded-xl border p-3 cursor-pointer transition ${runtime === rt ? "border-neon-blue/50 bg-neon-blue/5" : "border-white/[0.06]"}`}>
-                  <input type="radio" name="runtime" checked={runtime === rt} onChange={() => setRuntime(rt)} className="accent-neon-blue" />
-                  <span className="text-sm text-white">{rt === "openclaw" ? "OpenClaw" : rt === "claude-code" ? "Claude Code" : rt === "codex" ? "Codex" : "Other"}</span>
+              {RUNTIME_OPTIONS.map(opt => (
+                <label key={opt.key} className={`flex items-center gap-3 rounded-xl border p-3 cursor-pointer transition ${runtime === opt.key ? "border-neon-blue/50 bg-neon-blue/5" : "border-white/[0.06]"}`}>
+                  <input type="radio" name="runtime" checked={runtime === opt.key} onChange={() => setRuntime(opt.key)} className="accent-neon-blue" />
+                  <span className="text-sm text-white">{opt.label}</span>
                 </label>
               ))}
             </div>
-            <button onClick={() => {
-              // Load providers for next step
-              fetch("/api/fund/providers").then(r => r.json()).then((d: { providers?: Provider[] }) => {
-                setProviders(d.providers ?? []);
-                setStep("provider");
-              }).catch(() => setStep("provider"));
-            }} className="w-full rounded-lg bg-neon-blue/20 py-2.5 text-sm font-medium text-neon-blue hover:bg-neon-blue/30 transition">
+            <button onClick={() => doStep(async () => {
+              const res = await fetch("/api/fund/providers");
+              const data = await res.json() as { providers?: Provider[]; error?: { message?: string } };
+              if (!res.ok) {
+                throw new Error(data.error?.message ?? "Failed to load providers.");
+              }
+              setProviders(data.providers ?? []);
+              setStep("provider");
+            })} className="w-full rounded-lg bg-neon-blue/20 py-2.5 text-sm font-medium text-neon-blue hover:bg-neon-blue/30 transition">
               Continue
             </button>
           </>
@@ -228,7 +230,6 @@ export const WizardView: FC<Props> = ({ onComplete }) => {
 
                 await postApi("/api/connect/apply", {
                   runtime,
-                  scope: runtime === "openclaw" ? "user" : "project",
                   allowWalletMutation: false,
                   claudeScope: "project-local",
                   startProxy: runtime === "claude-code",

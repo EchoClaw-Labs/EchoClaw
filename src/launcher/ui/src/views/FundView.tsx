@@ -3,6 +3,7 @@ import { PageHeader } from "../components/PageHeader";
 import { SetupCard } from "../components/SetupCard";
 import { ActionModal } from "../components/ActionModal";
 import { WaveSpinner } from "../components/WaveSpinner";
+import { postApi } from "../api";
 
 interface FundData {
   walletBalanceOg: number;
@@ -16,6 +17,7 @@ interface FundData {
   recommendedMinLockedOg: number | null;
   currentLockedOg: number | null;
   acknowledged: boolean | null;
+  subAccountExists?: boolean;
   monitorRunning: boolean;
   refreshedAt: string;
 }
@@ -30,11 +32,6 @@ interface Provider {
 type ModalType = "deposit" | "fund" | "ack" | "apikey" | "providers" | null;
 
 interface Props { onNavigate: (p: string) => void }
-
-async function postApi(path: string, body: Record<string, unknown>) {
-  const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  return res.json();
-}
 
 export const FundView: FC<Props> = ({ onNavigate }) => {
   const [view, setView] = useState<FundData | null>(null);
@@ -103,19 +100,19 @@ export const FundView: FC<Props> = ({ onNavigate }) => {
       {view && (
         <>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 mb-6">
-            <SetupCard title="Wallet" status="done" summary={`${view.walletBalanceOg.toFixed(4)} 0G`} detail="Available balance" />
+            <SetupCard title="Wallet" status="done" summary={`${view.walletBalanceOg.toFixed(4)} 0G`} detail="Your on-chain 0G token balance" />
             <SetupCard
               title="Ledger"
               status={view.ledgerTotalOg > 0 ? "done" : "needed"}
               summary={`${view.ledgerAvailableOg.toFixed(4)} avail / ${view.ledgerTotalOg.toFixed(4)} total`}
-              detail={`Reserved: ${view.ledgerReservedOg.toFixed(4)} 0G`}
+              detail={`Compute budget for AI inference \u00b7 Reserved: ${view.ledgerReservedOg.toFixed(4)} 0G`}
               action={{ label: "Deposit", onClick: () => { setAmount("1.0"); setModal("deposit"); } }}
             />
             <SetupCard
               title="Provider"
               status={view.provider ? "done" : "needed"}
               summary={view.model ?? "No provider"}
-              detail={view.provider ? `${view.provider.slice(0, 10)}...` : ""}
+              detail={view.provider ? `Selected AI model on 0G \u00b7 ${view.provider.slice(0, 10)}...` : "Select an AI model on 0G"}
               action={{ label: "Switch", onClick: loadProviders }}
             />
           </div>
@@ -124,9 +121,9 @@ export const FundView: FC<Props> = ({ onNavigate }) => {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 mb-6">
               <SetupCard
                 title="Locked"
-                status={view.currentLockedOg != null && view.currentLockedOg > 0 ? "done" : "needed"}
-                summary={view.currentLockedOg != null ? `${view.currentLockedOg.toFixed(4)} 0G` : "Not funded"}
-                detail={view.recommendedMinLockedOg != null ? `Min: ${view.recommendedMinLockedOg.toFixed(3)} 0G` : ""}
+                status={view.subAccountExists === false ? "needed" : (view.currentLockedOg != null && view.currentLockedOg > 0 ? "done" : "needed")}
+                summary={view.subAccountExists === false ? "Not funded yet" : (view.currentLockedOg != null ? `${view.currentLockedOg.toFixed(4)} 0G` : "Not funded")}
+                detail={view.subAccountExists === false ? "Tokens reserved for this model \u00b7 Fund provider to create sub-account" : (view.recommendedMinLockedOg != null ? `Tokens reserved for this model \u00b7 Min: ${view.recommendedMinLockedOg.toFixed(3)} 0G` : "Tokens reserved for this model")}
                 action={{ label: "Fund", onClick: () => {
                   const def = view.recommendedMinLockedOg && view.currentLockedOg != null
                     ? Math.max(0.1, view.recommendedMinLockedOg - view.currentLockedOg).toFixed(2) : "1.0";
@@ -135,15 +132,16 @@ export const FundView: FC<Props> = ({ onNavigate }) => {
               />
               <SetupCard
                 title="ACK"
-                status={view.acknowledged === true ? "done" : "needed"}
-                summary={view.acknowledged ? "Acknowledged" : "ACK needed"}
-                action={view.acknowledged ? undefined : { label: "ACK", onClick: () => setModal("ack") }}
+                status={view.subAccountExists === false ? "pending" : (view.acknowledged === true ? "done" : "needed")}
+                summary={view.subAccountExists === false ? "Fund model first" : (view.acknowledged ? "Acknowledged" : "ACK needed")}
+                detail={view.subAccountExists === false ? "Provider signer acknowledgment \u00b7 Requires funded sub-account" : "Provider TEE signer acknowledgment"}
+                action={view.subAccountExists === false ? undefined : (view.acknowledged ? undefined : { label: "ACK", onClick: () => setModal("ack") })}
               />
               <SetupCard
                 title="Pricing"
                 status="done"
                 summary={`${view.inputPricePerMTokens ?? "?"} / ${view.outputPricePerMTokens ?? "?"}`}
-                detail="per 1M tokens"
+                detail="Per-token inference costs \u00b7 per 1M tokens"
                 action={{ label: "API Key", onClick: () => setModal("apikey") }}
               />
             </div>

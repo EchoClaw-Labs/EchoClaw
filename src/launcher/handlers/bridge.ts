@@ -102,14 +102,6 @@ const handleDepositSubmit: RouteHandler = async (_req, res, params) => {
   const chains = await getCachedKhalaniChains();
   const client = getKhalaniClient();
 
-  // Get the quote's source chain from the route
-  const quotes = await client.getQuotes({
-    tradeType: "EXACT_INPUT",
-    fromChainId: 0, toChainId: 0,
-    fromToken: "", toToken: "", amount: "0",
-    fromAddress: "",
-  }).catch(() => null);
-
   // Build deposit plan first
   const plan = await client.buildDeposit({
     from: (params.body?.from as string) ?? "",

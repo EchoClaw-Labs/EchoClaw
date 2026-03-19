@@ -8,11 +8,17 @@
 import type { RouteHandler } from "../types.js";
 import { jsonResponse, registerRoute } from "../routes.js";
 import { buildEchoSnapshot } from "../../commands/echo/snapshot.js";
-import { buildConnectPayload, normalizeRuntime } from "../../commands/echo/assessment.js";
+import { buildConnectPayload, normalizeRuntime, defaultScopeForRuntime } from "../../commands/echo/assessment.js";
 import { performConnectApply } from "../../commands/echo/connect.js";
 import { autoDetectProvider } from "../../providers/registry.js";
 import type { ProviderName } from "../../providers/types.js";
 import type { EchoScope, ClaudeSettingsScope } from "../../commands/echo/types.js";
+
+function resolveScope(rawScope: unknown, runtime: ProviderName): EchoScope {
+  return rawScope === "user" || rawScope === "project"
+    ? rawScope
+    : defaultScopeForRuntime(runtime);
+}
 
 // ── POST /api/connect/plan ───────────────────────────────────────
 
@@ -20,12 +26,12 @@ const handlePlan: RouteHandler = async (_req, res, params) => {
   const runtime = params.body?.runtime
     ? normalizeRuntime(params.body.runtime as string)
     : autoDetectProvider().name;
-  const scope = (params.body?.scope as EchoScope) ?? "project";
+  const scope = resolveScope(params.body?.scope, runtime);
   const allowWallet = params.body?.allowWalletMutation === true;
 
   const snapshot = await buildEchoSnapshot({ includeReadiness: true, fresh: true });
   const payload = buildConnectPayload(snapshot, runtime, scope, allowWallet);
-  jsonResponse(res, 200, payload);
+  jsonResponse(res, 200, { ...payload, defaultScope: defaultScopeForRuntime(runtime) });
 };
 
 // ── POST /api/connect/apply ──────────────────────────────────────
@@ -34,7 +40,7 @@ const handleApply: RouteHandler = async (_req, res, params) => {
   const runtime = params.body?.runtime
     ? normalizeRuntime(params.body.runtime as string)
     : autoDetectProvider().name;
-  const scope = (params.body?.scope as EchoScope) ?? "project";
+  const scope = resolveScope(params.body?.scope, runtime);
   const claudeScope = (params.body?.claudeScope as ClaudeSettingsScope) ?? "project-local";
 
   const result = await performConnectApply({

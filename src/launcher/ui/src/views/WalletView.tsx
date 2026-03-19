@@ -3,7 +3,7 @@ import { PageHeader } from "../components/PageHeader";
 import { SetupCard } from "../components/SetupCard";
 import { ActionModal } from "../components/ActionModal";
 import { WaveSpinner } from "../components/WaveSpinner";
-import { getSnapshot } from "../api";
+import { getSnapshot, postApi } from "../api";
 
 function trunc(addr: string | null): string {
   if (!addr) return "—";
@@ -19,12 +19,7 @@ interface Wallet {
 
 interface BackupEntry { dir: string; manifest: { createdAt: string; walletAddress: string | null; solanaWalletAddress: string | null } }
 
-type ModalType = "password" | "createEvm" | "createSol" | "importEvm" | "importSol" | "backups" | "export" | null;
-
-async function postApi(path: string, body: Record<string, unknown>) {
-  const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  return res.json() as Promise<Record<string, unknown>>;
-}
+type ModalType = "password" | "createEvm" | "createSol" | "importEvm" | "importSol" | "backups" | "export" | "confirmOverwrite" | "confirmRestore" | null;
 
 interface Props { onNavigate: (p: string) => void }
 
@@ -42,6 +37,12 @@ export const WalletView: FC<Props> = ({ onNavigate }) => {
   const [importKey, setImportKey] = useState("");
   const [exportChain, setExportChain] = useState<"evm" | "solana">("evm");
 
+  // Pending action for overwrite confirmation flow
+  const [pendingAction, setPendingAction] = useState<{ path: string; body: Record<string, unknown> } | null>(null);
+  const [confirmMessage, setConfirmMessage] = useState("");
+  // Pending restore action for restore confirmation flow
+  const [pendingRestore, setPendingRestore] = useState<{ backupDir: string } | null>(null);
+
   const refresh = useCallback(async () => {
     try {
       const snap = await getSnapshot();
@@ -57,12 +58,36 @@ export const WalletView: FC<Props> = ({ onNavigate }) => {
   const doAction = async (path: string, body: Record<string, unknown>) => {
     setBusy(true);
     try {
-      const r = await postApi(path, body);
+      const r = await postApi<Record<string, unknown>>(path, body);
+      // Backend returns confirm_required when a keystore already exists
+      if (r.status === "confirm_required") {
+        setPendingAction({ path, body });
+        setConfirmMessage((r.message as string) ?? "A keystore already exists. Proceeding will overwrite it.");
+        setModal("confirmOverwrite");
+        setBusy(false);
+        return;
+      }
       showToast((r.summary as string) ?? "Done");
       setModal(null);
       await refresh();
     } catch { showToast("Error"); }
     finally { setBusy(false); }
+  };
+
+  const confirmOverwrite = async () => {
+    if (!pendingAction) return;
+    const { path, body } = pendingAction;
+    setPendingAction(null);
+    setModal(null);
+    await doAction(path, { ...body, force: true });
+  };
+
+  const confirmRestore = async () => {
+    if (!pendingRestore) return;
+    const { backupDir } = pendingRestore;
+    setPendingRestore(null);
+    setModal(null);
+    await doAction("/api/wallet/restore", { backupDir });
   };
 
   const loadBackups = async () => {
@@ -154,7 +179,7 @@ export const WalletView: FC<Props> = ({ onNavigate }) => {
         <div className="space-y-4">
           <input type="password" placeholder="0x... private key" value={importKey} onChange={e => setImportKey(e.target.value)}
             className="w-full rounded-lg border border-white/[0.1] bg-zinc-900 px-3 py-2 text-sm text-white font-mono focus:border-neon-blue focus:outline-none" />
-          <button disabled={busy || !importKey} onClick={() => doAction("/api/wallet/import", { chain: "evm", privateKey: importKey, force: true })}
+          <button disabled={busy || !importKey} onClick={() => doAction("/api/wallet/import", { chain: "evm", privateKey: importKey, force: false })}
             className="w-full rounded-lg bg-neon-blue/20 py-2 text-sm font-medium text-neon-blue hover:bg-neon-blue/30 transition disabled:opacity-40">
             {busy ? "Importing..." : "Import"}
           </button>
@@ -166,7 +191,7 @@ export const WalletView: FC<Props> = ({ onNavigate }) => {
         <div className="space-y-4">
           <input type="password" placeholder="Base58 or JSON byte array" value={importKey} onChange={e => setImportKey(e.target.value)}
             className="w-full rounded-lg border border-white/[0.1] bg-zinc-900 px-3 py-2 text-sm text-white font-mono focus:border-neon-blue focus:outline-none" />
-          <button disabled={busy || !importKey} onClick={() => doAction("/api/wallet/import", { chain: "solana", privateKey: importKey, force: true })}
+          <button disabled={busy || !importKey} onClick={() => doAction("/api/wallet/import", { chain: "solana", privateKey: importKey, force: false })}
             className="w-full rounded-lg bg-neon-blue/20 py-2 text-sm font-medium text-neon-blue hover:bg-neon-blue/30 transition disabled:opacity-40">
             {busy ? "Importing..." : "Import"}
           </button>
@@ -182,7 +207,7 @@ export const WalletView: FC<Props> = ({ onNavigate }) => {
                 <div className="text-xs text-zinc-300">{new Date(b.manifest.createdAt).toLocaleString()}</div>
                 <div className="text-xs text-zinc-500 font-mono truncate max-w-[200px]">{trunc(b.manifest.walletAddress)}</div>
               </div>
-              <button onClick={() => doAction("/api/wallet/restore", { backupDir: b.dir })}
+              <button onClick={() => { setPendingRestore({ backupDir: b.dir }); setModal("confirmRestore"); }}
                 className="rounded-lg bg-zinc-800 px-3 py-1 text-xs text-zinc-400 hover:text-zinc-200 transition">
                 Restore
               </button>
@@ -208,6 +233,40 @@ export const WalletView: FC<Props> = ({ onNavigate }) => {
             className="w-full rounded-lg bg-status-warn/20 py-2 text-sm font-medium text-status-warn hover:bg-status-warn/30 transition disabled:opacity-40">
             {busy ? "Exporting..." : "Export to File"}
           </button>
+        </div>
+      </ActionModal>
+
+      {/* Overwrite confirmation modal */}
+      <ActionModal open={modal === "confirmOverwrite"} onClose={() => { setModal(null); setPendingAction(null); }} title="Overwrite existing wallet?">
+        <div className="space-y-4">
+          <p className="text-sm text-zinc-400">{confirmMessage}</p>
+          <div className="flex gap-3">
+            <button onClick={() => { setModal(null); setPendingAction(null); }}
+              className="flex-1 rounded-lg bg-zinc-800 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-700 transition">
+              Cancel
+            </button>
+            <button disabled={busy} onClick={confirmOverwrite}
+              className="flex-1 rounded-lg bg-status-warn/20 py-2 text-sm font-medium text-status-warn hover:bg-status-warn/30 transition disabled:opacity-40">
+              {busy ? "Overwriting..." : "Overwrite"}
+            </button>
+          </div>
+        </div>
+      </ActionModal>
+
+      {/* Restore confirmation modal */}
+      <ActionModal open={modal === "confirmRestore"} onClose={() => { setModal(null); setPendingRestore(null); }} title="Restore wallet from backup?">
+        <div className="space-y-4">
+          <p className="text-sm text-zinc-400">This will overwrite your current wallet with the selected backup. A backup of the current state will be created first.</p>
+          <div className="flex gap-3">
+            <button onClick={() => { setModal(null); setPendingRestore(null); }}
+              className="flex-1 rounded-lg bg-zinc-800 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-700 transition">
+              Cancel
+            </button>
+            <button disabled={busy} onClick={confirmRestore}
+              className="flex-1 rounded-lg bg-status-warn/20 py-2 text-sm font-medium text-status-warn hover:bg-status-warn/30 transition disabled:opacity-40">
+              {busy ? "Restoring..." : "Restore"}
+            </button>
+          </div>
         </div>
       </ActionModal>
     </div>

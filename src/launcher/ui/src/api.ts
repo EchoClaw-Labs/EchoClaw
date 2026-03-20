@@ -40,6 +40,39 @@ export function getSnapshot(fresh = false): Promise<Record<string, unknown>> {
   return fetchApi(`/api/snapshot${qs}`);
 }
 
+export interface WalletState {
+  evmAddress: string | null;
+  solanaAddress: string | null;
+  evmKeystorePresent: boolean;
+  solanaKeystorePresent: boolean;
+  password: { status: string; source: string };
+  decryptable: boolean;
+}
+
+export interface WalletNativeBalance {
+  address: string | null;
+  configured: boolean;
+  chainId: number | null;
+  chainName: string | null;
+  symbol: string | null;
+  balance: string | null;
+  error: string | null;
+}
+
+export interface WalletSummary {
+  wallet: WalletState;
+  balances: {
+    evm: WalletNativeBalance;
+    solana: WalletNativeBalance;
+  };
+  refreshedAt: string;
+}
+
+export function getWalletSummary(fresh = false): Promise<WalletSummary> {
+  const qs = fresh ? "?fresh=1" : "";
+  return fetchApi(`/api/wallet/summary${qs}`);
+}
+
 export interface VerifyResult {
   phase: string;
   status: string;

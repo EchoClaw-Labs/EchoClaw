@@ -24,6 +24,7 @@ export const ClaudeView: FC<Props> = ({ onNavigate }) => {
   const [scope, setScope] = useState("project-local");
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [confirmRestore, setConfirmRestore] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -119,10 +120,29 @@ export const ClaudeView: FC<Props> = ({ onNavigate }) => {
                 ))}
               </div>
             </div>
-            <button disabled={busy} onClick={() => doAction(`/api/claude/${action}`, { scope, ...(action === "restore" ? { force: true } : {}) })}
-              className="w-full rounded-lg bg-neon-blue/20 py-2 text-sm font-medium text-neon-blue hover:bg-neon-blue/30 transition disabled:opacity-40">
-              {busy ? "Processing..." : action.charAt(0).toUpperCase() + action.slice(1)}
-            </button>
+            {action === "restore" && !confirmRestore ? (
+              <button onClick={() => setConfirmRestore(true)}
+                className="w-full rounded-lg bg-status-error/20 py-2 text-sm font-medium text-status-error hover:bg-status-error/30 transition">
+                Restore (overwrites current settings)
+              </button>
+            ) : action === "restore" && confirmRestore ? (
+              <div className="space-y-2">
+                <p className="text-xs text-status-warn">This will overwrite your current Claude settings. Are you sure?</p>
+                <div className="flex gap-2">
+                  <button onClick={() => setConfirmRestore(false)}
+                    className="flex-1 rounded-lg bg-zinc-800 py-2 text-sm text-zinc-300 hover:bg-zinc-700 transition">Cancel</button>
+                  <button disabled={busy} onClick={() => { doAction(`/api/claude/restore`, { scope, force: true }); setConfirmRestore(false); }}
+                    className="flex-1 rounded-lg bg-status-error/20 py-2 text-sm font-medium text-status-error hover:bg-status-error/30 transition disabled:opacity-40">
+                    {busy ? "Restoring..." : "Confirm Restore"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button disabled={busy} onClick={() => doAction(`/api/claude/${action}`, { scope })}
+                className="w-full rounded-lg bg-neon-blue/20 py-2 text-sm font-medium text-neon-blue hover:bg-neon-blue/30 transition disabled:opacity-40">
+                {busy ? "Processing..." : action.charAt(0).toUpperCase() + action.slice(1)}
+              </button>
+            )}
           </div>
         </ActionModal>
       ))}

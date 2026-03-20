@@ -17,7 +17,7 @@ export const ExploreView: FC<Props> = ({ onNavigate, mode }) => {
 
   if (loading) return <div className="flex justify-center py-20"><WaveSpinner size="lg" /></div>;
 
-  const title = mode === "explore" ? "Explore Echo" : "Advanced";
+  const title = mode === "explore" ? "Explore EchoClaw" : "Advanced";
   const desc = mode === "explore" ? "Safe starter actions for exploring EchoClaw" : "Low-level advanced surfaces";
 
   return (

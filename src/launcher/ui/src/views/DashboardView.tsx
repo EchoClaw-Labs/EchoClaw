@@ -3,6 +3,7 @@ import { SetupCard } from "../components/SetupCard";
 import { WaveSpinner } from "../components/WaveSpinner";
 import { HugeiconsIcon, WalletIcon, CpuIcon, LinkIcon, ServerIcon, ActivityIcon, ShieldIcon, CheckmarkCircle02Icon, BotIcon } from "../components/Icons";
 import { getSnapshot, getDaemons, getAgentReadiness, startAgent, getTavilyStatus, setTavilyKey, setAgentPassword, type DaemonStatus, type AgentReadiness } from "../api";
+import { runtimeLabel } from "../utils/runtime-meta";
 
 interface Snapshot {
   version: string;
@@ -61,8 +62,15 @@ function computeStatus(s: Snapshot) {
     return { status: "needed" as CardStatus, summary: "No provider selected", detail: "Select and fund a provider" };
   }
   const model = s.compute.state.model ?? "unknown";
+  const checks = s.compute.readiness?.checks;
+  if (checks) {
+    if (!checks.ledger?.ok) return { status: "needed" as CardStatus, summary: "Deposit needed", detail: "Deposit 0G to compute ledger" };
+    if (!checks.subAccount?.ok) return { status: "needed" as CardStatus, summary: "Funding needed", detail: "Fund your selected provider" };
+    if (!checks.ack?.ok) return { status: "needed" as CardStatus, summary: "ACK needed", detail: "Acknowledge provider signer" };
+    if (!checks.openclawConfig?.ok) return { status: "needed" as CardStatus, summary: "API key needed", detail: "Create an API key" };
+  }
   if (s.compute.readiness && !s.compute.readiness.overall) {
-    return { status: "needed" as CardStatus, summary: "Compute needs attention", detail: model };
+    return { status: "needed" as CardStatus, summary: "Setup incomplete", detail: model };
   }
   return { status: "done" as CardStatus, summary: "Provider active", detail: model };
 }
@@ -72,7 +80,7 @@ function runtimeStatus(s: Snapshot) {
   if (detected.length === 0) {
     return { status: "needed" as CardStatus, summary: "No runtime detected", detail: "Connect an AI runtime" };
   }
-  return { status: "done" as CardStatus, summary: `${detected.length} runtime(s) detected`, detail: `Recommended: ${s.runtimes.recommended}` };
+  return { status: "done" as CardStatus, summary: `${detected.length} runtime(s) detected`, detail: `Recommended: ${runtimeLabel(s.runtimes.recommended)}` };
 }
 
 function claudeStatus(s: Snapshot) {
@@ -115,6 +123,8 @@ export const DashboardView: FC<{ onNavigate: (path: string) => void }> = ({ onNa
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState<string | null>(null);
+  const showToast = useCallback((msg: string) => { setToast(msg); setTimeout(() => setToast(null), 4000); }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -149,9 +159,6 @@ export const DashboardView: FC<{ onNavigate: (path: string) => void }> = ({ onNa
   const cl = claudeStatus(snapshot);
   const m = monitorStatus(snapshot, daemons);
 
-  const [toast, setToast] = useState<string | null>(null);
-  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 4000); };
-
   const cards = [
     { ...w, title: "Wallet", icon: <HugeiconsIcon icon={WalletIcon} size={18} />, path: "/wallet", actionLabel: w.status === "done" ? "Manage" : "Setup",
       copyAddresses: snapshot.wallet.evmAddress || snapshot.wallet.solanaAddress ? (
@@ -179,6 +186,8 @@ export const DashboardView: FC<{ onNavigate: (path: string) => void }> = ({ onNa
     { ...cl, title: "Claude Proxy", icon: <HugeiconsIcon icon={ServerIcon} size={18} />, path: "/claude", actionLabel: "Manage", copyAddresses: null },
     { ...m, title: "Monitor", icon: <HugeiconsIcon icon={ActivityIcon} size={18} />, path: "/manage", actionLabel: m.status === "done" ? "View" : "Setup", copyAddresses: null },
     { status: "pending" as CardStatus, title: "Doctor", summary: "Run diagnostics", detail: "Check system health", icon: <HugeiconsIcon icon={ShieldIcon} size={18} />, path: "/manage", actionLabel: "Check", copyAddresses: null },
+    { status: "pending" as CardStatus, title: "Bridge", summary: "Cross-chain transfers", detail: "Bridge tokens via Khalani", icon: <HugeiconsIcon icon={LinkIcon} size={18} />, path: "/bridge", actionLabel: "Open", copyAddresses: null },
+    { status: "pending" as CardStatus, title: "Explore", summary: "Discover features", detail: "Safe starter actions", icon: <HugeiconsIcon icon={BotIcon} size={18} />, path: "/explore", actionLabel: "Browse", copyAddresses: null },
   ];
 
   // Always render agent card — use fallback when API failed

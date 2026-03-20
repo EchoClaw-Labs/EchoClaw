@@ -16,6 +16,8 @@ const mockLoadComputeState = vi.fn();
 const mockGetPublicClient = vi.fn();
 const mockRequireWalletAndKeystore = vi.fn();
 const mockLoadConfig = vi.fn();
+const mockCheckAuthState = vi.fn();
+const mockResolvePreferredComputeSelection = vi.fn();
 
 // ── Mocks ───────────────────────────────────────────────────────────
 
@@ -108,6 +110,11 @@ vi.mock("../commands/echo/catalog.js", () => ({
   },
 }));
 
+vi.mock("../commands/echo/compute-selection.js", () => ({
+  checkAuthState: mockCheckAuthState,
+  resolvePreferredComputeSelection: mockResolvePreferredComputeSelection,
+}));
+
 vi.mock("../0g-compute/constants.js", () => ({
   ZG_COMPUTE_DIR: "/tmp/zg-test",
   ZG_MONITOR_LOG_FILE: "/tmp/zg-test/monitor.log",
@@ -120,7 +127,7 @@ vi.mock("../errors.js", () => ({
 
 // ── Dynamic import after mocks ──────────────────────────────────────
 
-const { buildFundView } = await import("../commands/echo/fund.js");
+const { buildFundView, readProviderSelection } = await import("../commands/echo/fund.js");
 
 // ── Shared defaults ─────────────────────────────────────────────────
 
@@ -131,6 +138,7 @@ const SERVICE = {
   model: "test-model",
   inputPrice: 100n,
   outputPrice: 200n,
+  url: "https://test-provider.example.com/v1",
 };
 
 function setupDefaults() {
@@ -143,6 +151,8 @@ function setupDefaults() {
   mockFormatPricePerMTokens.mockReturnValue("0.100");
   mockLoadComputeState.mockReturnValue(null);
   mockLoadConfig.mockReturnValue({});
+  mockCheckAuthState.mockReturnValue({ requiresApiKeyRotation: false, selectionWarning: null });
+  mockResolvePreferredComputeSelection.mockReturnValue({ provider: PROVIDER_ADDR, model: "test-model", endpoint: SERVICE.url, source: "live-fallback" });
   mockGetPublicClient.mockReturnValue({
     getBalance: vi.fn().mockResolvedValue(0n),
   });
@@ -201,5 +211,97 @@ describe("buildFundView", () => {
     expect(view.provider).toBeNull();
     expect(view.subAccountExists).toBe(false);
     expect(view.acknowledged).toBeNull();
+  });
+
+  it("returns requiresApiKeyRotation and selectionWarning from checkAuthState", async () => {
+    mockGetSubAccountBalance.mockResolvedValue(null);
+    mockCheckAuthState.mockReturnValue({
+      requiresApiKeyRotation: true,
+      selectionWarning: "Create a new API key — Claude Code needs a valid key for this provider.",
+    });
+
+    const view = await buildFundView({ provider: PROVIDER_ADDR });
+
+    expect(view.requiresApiKeyRotation).toBe(true);
+    expect(view.selectionWarning).toBe("Create a new API key — Claude Code needs a valid key for this provider.");
+    expect(mockCheckAuthState).toHaveBeenCalledWith(PROVIDER_ADDR, expect.any(String));
+  });
+
+  it("no provider -> requiresApiKeyRotation false and selectionWarning null", async () => {
+    mockListChatServices.mockResolvedValue([]);
+
+    const view = await buildFundView({});
+
+    expect(view.requiresApiKeyRotation).toBe(false);
+    expect(view.selectionWarning).toBeNull();
+    expect(mockCheckAuthState).not.toHaveBeenCalled();
+  });
+
+  it("no explicit provider -> uses resolvePreferredComputeSelection", async () => {
+    mockGetSubAccountBalance.mockResolvedValue(null);
+
+    const view = await buildFundView({});
+
+    expect(mockResolvePreferredComputeSelection).toHaveBeenCalledWith([SERVICE]);
+    expect(view.provider).toBe(PROVIDER_ADDR);
+  });
+
+  it("explicit provider matching live service -> resolver NOT called", async () => {
+    mockGetSubAccountBalance.mockResolvedValue(null);
+
+    const view = await buildFundView({ provider: PROVIDER_ADDR });
+
+    expect(mockResolvePreferredComputeSelection).not.toHaveBeenCalled();
+    expect(view.provider).toBe(PROVIDER_ADDR);
+  });
+
+  it("explicit provider NOT matching any service -> falls through to resolver", async () => {
+    mockGetSubAccountBalance.mockResolvedValue(null);
+    mockResolvePreferredComputeSelection.mockReturnValue({ provider: PROVIDER_ADDR, model: "test-model", endpoint: SERVICE.url, source: "compute-state" });
+
+    const view = await buildFundView({ provider: "0xDEAD" });
+
+    expect(mockResolvePreferredComputeSelection).toHaveBeenCalledWith([SERVICE]);
+    expect(view.provider).toBe(PROVIDER_ADDR);
+  });
+
+  it("resolver returns second service when compute-state points to it", async () => {
+    const SVC_B = { provider: "0xBBB", model: "model-b", inputPrice: 50n, outputPrice: 100n, url: "https://b.example.com/v1" };
+    mockListChatServices.mockResolvedValue([SERVICE, SVC_B]);
+    mockGetSubAccountBalance.mockResolvedValue(null);
+    mockResolvePreferredComputeSelection.mockReturnValue({ provider: "0xBBB", model: "model-b", endpoint: SVC_B.url, source: "compute-state" });
+
+    const view = await buildFundView({});
+
+    expect(view.provider).toBe("0xBBB");
+    expect(view.model).toBe("model-b");
+  });
+});
+
+describe("readProviderSelection", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupDefaults();
+  });
+
+  it("prefers compute-state over cfg.claude", () => {
+    mockLoadComputeState.mockReturnValue({ activeProvider: "0xAAA", model: "m1", configuredAt: 1 });
+    mockLoadConfig.mockReturnValue({ claude: { provider: "0xBBB", model: "m2", providerEndpoint: "http://x", proxyPort: 4101 } });
+
+    expect(readProviderSelection()).toBe("0xAAA");
+  });
+
+  it("falls back to cfg.claude when compute-state is null", () => {
+    mockLoadComputeState.mockReturnValue(null);
+    mockLoadConfig.mockReturnValue({ claude: { provider: "0xBBB", model: "m2", providerEndpoint: "http://x", proxyPort: 4101 } });
+
+    expect(readProviderSelection()).toBe("0xBBB");
+  });
+
+  it("returns null when neither source has a provider", () => {
+    mockLoadComputeState.mockReturnValue(null);
+    mockLoadConfig.mockReturnValue({});
+
+    expect(readProviderSelection()).toBeNull();
   });
 });

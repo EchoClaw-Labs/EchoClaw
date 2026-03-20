@@ -14,21 +14,20 @@ import {
   depositToLedger,
   fundProvider,
   ackWithReadback,
-  createApiKey,
 } from "../../0g-compute/operations.js";
 import { calculateProviderPricing, formatPricePerMTokens } from "../../0g-compute/pricing.js";
 import { getAuthenticatedBroker, resetAuthenticatedBroker } from "../../0g-compute/broker-factory.js";
-import { saveComputeState } from "../../0g-compute/readiness.js";
 import { autoDetectProvider } from "../../providers/registry.js";
 import { normalizeRuntime } from "../../commands/echo/assessment.js";
-import { writeAppEnvValue } from "../../providers/env-resolution.js";
-import { loadConfig } from "../../config/store.js";
+import { resolvePreferredComputeSelection } from "../../commands/echo/compute-selection.js";
+import { selectFundProvider, createCanonicalApiKey } from "../../commands/echo/fund-apply.js";
+import { EchoError } from "../../errors.js";
 import logger from "../../utils/logger.js";
 
 // ── GET /api/fund/view ───────────────────────────────────────────
 
 const handleFundView: RouteHandler = async (_req, res, params) => {
-  const provider = params.query.provider || readProviderSelection();
+  const provider = params.query.provider || null;
   const fresh = params.query.fresh === "1" || params.query.fresh === "true";
 
   try {
@@ -104,14 +103,19 @@ const handleFundProvider: RouteHandler = async (_req, res, params) => {
     errorResponse(res, 400, "INVALID_AMOUNT", "amount must be a positive number."); return;
   }
 
-  const broker = await getAuthenticatedBroker();
-  await fundProvider(broker, provider, amount);
+  try {
+    const broker = await getAuthenticatedBroker();
+    await fundProvider(broker, provider, amount);
 
-  logger.info(`[launcher] funded ${amount} 0G to provider ${provider.slice(0, 10)}...`);
-  jsonResponse(res, 200, {
-    phase: "fund", status: "applied",
-    summary: `Locked ${amount} 0G for provider.`,
-  });
+    logger.info(`[launcher] funded ${amount} 0G to provider ${provider.slice(0, 10)}...`);
+    jsonResponse(res, 200, {
+      phase: "fund", status: "applied",
+      summary: `Locked ${amount} 0G for provider.`,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    errorResponse(res, 500, "FUND_PROVIDER_FAILED", `Failed to fund provider: ${msg}`, "Check ledger balance and network.");
+  }
 };
 
 // ── POST /api/fund/ack ───────────────────────────────────────────
@@ -120,53 +124,105 @@ const handleAck: RouteHandler = async (_req, res, params) => {
   const provider = params.body?.provider as string | undefined;
   if (!provider) { errorResponse(res, 400, "MISSING_PROVIDER", "provider is required."); return; }
 
-  const broker = await getAuthenticatedBroker();
-  const confirmed = await ackWithReadback(broker, provider);
+  try {
+    const broker = await getAuthenticatedBroker();
+    const confirmed = await ackWithReadback(broker, provider);
 
-  jsonResponse(res, 200, {
-    phase: "fund", status: "applied",
-    summary: confirmed ? "Provider acknowledged and confirmed." : "ACK sent but confirmation timed out.",
-    confirmed,
-  });
+    jsonResponse(res, 200, {
+      phase: "fund", status: "applied",
+      summary: confirmed ? "Provider acknowledged and confirmed." : "ACK sent but confirmation timed out.",
+      confirmed,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    errorResponse(res, 500, "ACK_FAILED", `Failed to acknowledge provider: ${msg}`, "Ensure provider is funded and network is reachable.");
+  }
 };
 
 // ── POST /api/fund/api-key ───────────────────────────────────────
 
 const handleApiKey: RouteHandler = async (_req, res, params) => {
-  const provider = params.body?.provider as string | undefined;
+  const requestedProvider = params.body?.provider as string | undefined;
   const tokenId = params.body?.tokenId != null ? Number(params.body.tokenId) : 0;
   const saveClaudeToken = params.body?.saveClaudeToken === true;
+  const patchOpenclaw = params.body?.patchOpenclaw === true;
 
-  if (!provider) { errorResponse(res, 400, "MISSING_PROVIDER", "provider is required."); return; }
-
-  const broker = await getAuthenticatedBroker();
-  const apiKey = await createApiKey(broker, provider, tokenId);
-
-  let claudeTokenSaved = false;
-  if (saveClaudeToken) {
-    const cfg = loadConfig();
-    if (cfg.claude && cfg.claude.provider.toLowerCase() === provider.toLowerCase()) {
-      writeAppEnvValue("ZG_CLAUDE_AUTH_TOKEN", apiKey.rawToken);
-      process.env.ZG_CLAUDE_AUTH_TOKEN = apiKey.rawToken;
-      claudeTokenSaved = true;
-    }
+  if (!Number.isInteger(tokenId) || tokenId < 0 || tokenId > 254) {
+    errorResponse(res, 400, "INVALID_TOKEN_ID", "tokenId must be an integer between 0 and 254."); return;
   }
 
-  // Save compute state — need model from services
   try {
+    const broker = await getAuthenticatedBroker();
     const services = await listChatServices(broker);
-    const svc = services.find(s => s.provider.toLowerCase() === provider.toLowerCase());
-    if (svc) {
-      saveComputeState({ activeProvider: provider, model: svc.model, configuredAt: Date.now() });
-    }
-  } catch { /* non-fatal */ }
 
-  logger.info(`[launcher] API key created (tokenId ${apiKey.tokenId})`);
-  jsonResponse(res, 200, {
-    phase: "fund", status: "applied",
-    summary: `API key created (token ID ${apiKey.tokenId}).`,
-    tokenId: apiKey.tokenId, claudeTokenSaved,
-  });
+    // Resolve canonical selection from live services
+    const selection = resolvePreferredComputeSelection(services);
+    if (!selection) {
+      errorResponse(res, 404, "PROVIDER_NOT_FOUND", "No live 0G providers are currently available.");
+      return;
+    }
+
+    // Staleness check — HTTP-specific concern (UI race condition guard)
+    if (requestedProvider && requestedProvider.toLowerCase() !== selection.provider.toLowerCase()) {
+      errorResponse(res, 409, "STALE_PROVIDER_SELECTION", "Selected provider changed. Refresh the Fund view and try again.");
+      return;
+    }
+
+    // Delegate to shared helper
+    const result = await createCanonicalApiKey({
+      broker, selection, tokenId, saveClaudeToken, patchOpenclaw,
+    });
+
+    logger.info(`[launcher] API key created (tokenId ${result.apiKey.tokenId})`);
+    jsonResponse(res, 200, {
+      phase: "fund", status: "applied",
+      summary: result.warnings[0] ?? `API key created (token ID ${result.apiKey.tokenId}).`,
+      tokenId: result.apiKey.tokenId,
+      claudeTokenSaved: result.claudeTokenSaved,
+      openclawPatched: result.openclawPatched,
+      warnings: result.warnings,
+      rawToken: result.apiKey.rawToken,
+      provider: result.selection.provider,
+      model: result.selection.model,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    errorResponse(res, 500, "API_KEY_FAILED", `Failed to create API key: ${msg}`, "Ensure provider is funded and ACKed.");
+  }
+};
+
+// ── POST /api/fund/select-provider ───────────────────────────────
+
+const handleSelectProvider: RouteHandler = async (_req, res, params) => {
+  const provider = params.body?.provider as string | undefined;
+  if (!provider) {
+    errorResponse(res, 400, "MISSING_PROVIDER", "provider is required.");
+    return;
+  }
+
+  try {
+    const broker = await getAuthenticatedBroker();
+    const services = await listChatServices(broker);
+    const result = await selectFundProvider(provider, services);
+
+    logger.info(`[launcher] provider selected: ${result.selection.provider.slice(0, 10)}... (model: ${result.selection.model})`);
+    jsonResponse(res, 200, {
+      phase: "fund",
+      status: "applied",
+      summary: `Provider selected: ${result.selection.model}`,
+      provider: result.selection.provider,
+      model: result.selection.model,
+      requiresApiKeyRotation: result.authState.requiresApiKeyRotation,
+      selectionWarning: result.authState.selectionWarning,
+    });
+  } catch (err) {
+    if (err instanceof EchoError) {
+      errorResponse(res, 404, err.code, err.message);
+      return;
+    }
+    const msg = err instanceof Error ? err.message : String(err);
+    errorResponse(res, 500, "SELECT_PROVIDER_FAILED", `Failed to select provider: ${msg}`);
+  }
 };
 
 // ── Registration ─────────────────────────────────────────────────
@@ -179,4 +235,5 @@ export function registerFundRoutes(): void {
   registerRoute("POST", "/api/fund/provider", handleFundProvider);
   registerRoute("POST", "/api/fund/ack", handleAck);
   registerRoute("POST", "/api/fund/api-key", handleApiKey);
+  registerRoute("POST", "/api/fund/select-provider", handleSelectProvider);
 }

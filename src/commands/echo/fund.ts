@@ -1,9 +1,9 @@
 import { formatUnits } from "viem";
 import type { Address } from "viem";
 import inquirer from "inquirer";
-import { createApiKey, depositToLedger, fundProvider, getLedgerBalance, getSubAccountBalance, isProviderAcked, listChatServices, ackWithReadback } from "../../0g-compute/operations.js";
+import { depositToLedger, fundProvider, getLedgerBalance, getSubAccountBalance, isProviderAcked, listChatServices, ackWithReadback } from "../../0g-compute/operations.js";
 import { calculateProviderPricing, formatPricePerMTokens } from "../../0g-compute/pricing.js";
-import { loadComputeState, saveComputeState } from "../../0g-compute/readiness.js";
+import { loadComputeState } from "../../0g-compute/readiness.js";
 import { getMonitorPid, isMonitorTrackingProvider, stopMonitorDaemon } from "../../0g-compute/monitor-lifecycle.js";
 import { ZG_COMPUTE_DIR, ZG_MONITOR_LOG_FILE } from "../../0g-compute/constants.js";
 import { loadConfig } from "../../config/store.js";
@@ -21,10 +21,11 @@ import { PROVIDER_LABELS } from "./catalog.js";
 import { writeEchoWorkflow } from "./protocol.js";
 import { printVerify } from "./status.js";
 import { buildFundPayload } from "./fund-assessment.js";
+import { checkAuthState, resolvePreferredComputeSelection } from "./compute-selection.js";
+import { selectFundProvider, createCanonicalApiKey, createCanonicalApiKeyFromServices } from "./fund-apply.js";
 
 export function readProviderSelection(): string | null {
-  const cfg = loadConfig();
-  return cfg.claude?.provider ?? loadComputeState()?.activeProvider ?? null;
+  return loadComputeState()?.activeProvider ?? loadConfig().claude?.provider ?? null;
 }
 
 async function getWalletBalanceOg(): Promise<number> {
@@ -51,7 +52,15 @@ export async function buildFundView(opts?: {
   const walletBalanceOg = await getWalletBalanceOg();
   const ledgerBalance = await getLedgerBalance(broker);
   const services = await listChatServices(broker);
-  const selected = services.find((svc) => svc.provider.toLowerCase() === opts?.provider?.toLowerCase()) ?? services[0] ?? null;
+  let selected = opts?.provider
+    ? services.find(svc => svc.provider.toLowerCase() === opts.provider!.toLowerCase()) ?? null
+    : null;
+  if (!selected && services.length > 0) {
+    const resolved = resolvePreferredComputeSelection(services);
+    if (resolved) {
+      selected = services.find(svc => svc.provider.toLowerCase() === resolved.provider.toLowerCase()) ?? null;
+    }
+  }
 
   const provider = selected?.provider ?? null;
   const model = selected?.model ?? null;
@@ -64,6 +73,9 @@ export async function buildFundView(opts?: {
     ? await isProviderAcked(broker, provider)
     : null;
   const monitorRunning = getMonitorPid() != null;
+  const authState = provider && selected
+    ? checkAuthState(provider, selected.url)
+    : { requiresApiKeyRotation: false, selectionWarning: null };
 
   return {
     walletBalanceOg,
@@ -80,6 +92,8 @@ export async function buildFundView(opts?: {
     acknowledged,
     monitorRunning,
     monitorTrackingProvider: provider ? isMonitorTrackingProvider(provider) : false,
+    requiresApiKeyRotation: authState.requiresApiKeyRotation,
+    selectionWarning: authState.selectionWarning,
     refreshedAt: new Date().toISOString(),
   };
 }
@@ -144,16 +158,6 @@ async function maybeSaveClaudeTokenInteractive(provider: string, token: string):
   successBox("Claude Token Saved", "Stored ZG_CLAUDE_AUTH_TOKEN in ~/.config/echoclaw/.env");
 }
 
-function saveClaudeTokenNonInteractive(provider: string, token: string): boolean {
-  const cfg = loadConfig();
-  if (!cfg.claude || cfg.claude.provider.toLowerCase() !== provider.toLowerCase()) {
-    return false;
-  }
-
-  writeAppEnvValue("ZG_CLAUDE_AUTH_TOKEN", token);
-  process.env.ZG_CLAUDE_AUTH_TOKEN = token;
-  return true;
-}
 
 async function startMonitorForProvider(provider: string): Promise<void> {
   const result = spawnDetached(["0g-compute", "monitor", "start", "--providers", provider, "--mode", "recommended"], ZG_MONITOR_LOG_FILE, ZG_COMPUTE_DIR);
@@ -199,7 +203,11 @@ export async function runInteractiveFund(runtimeHint?: ProviderName): Promise<vo
       continue;
     }
     if (action === "switch") {
-      selectedProvider = await chooseProvider(selectedProvider);
+      const chosen = await chooseProvider(selectedProvider);
+      if (chosen) {
+        const result = await selectFundProvider(chosen);
+        selectedProvider = result.selection.provider;
+      }
       fresh = true;
       continue;
     }
@@ -278,9 +286,17 @@ export async function runInteractiveFund(runtimeHint?: ProviderName): Promise<vo
         default: "0",
         validate: (input: string) => Number.isInteger(Number(input)) && Number(input) >= 0 && Number(input) <= 254 ? true : "Use an integer between 0 and 254.",
       }]);
-      const apiKey = await createApiKey(broker, selectedProvider, Number(tokenIdInput));
-      successBox("API Key Created", `Token ID: ${apiKey.tokenId}\nToken: ${apiKey.rawToken}`);
-      await maybeSaveClaudeTokenInteractive(selectedProvider, apiKey.rawToken);
+      const services = await listChatServices(broker);
+      const result = await createCanonicalApiKeyFromServices({
+        broker,
+        services,
+        tokenId: Number(tokenIdInput),
+      });
+      successBox("API Key Created", `Token ID: ${result.apiKey.tokenId}\nToken: ${result.apiKey.rawToken}`);
+      if (result.warnings.length > 0) {
+        warnBox("API Key Warnings", result.warnings.join("\n"));
+      }
+      await maybeSaveClaudeTokenInteractive(result.selection.provider, result.apiKey.rawToken);
       fresh = true;
       continue;
     }
@@ -318,12 +334,25 @@ export async function runHeadlessFund(options: FundApplyOptions & { apply?: bool
   const broker = await getAuthenticatedBroker();
   const appliedActions: string[] = [];
   const warnings: string[] = [];
-  const provider = options.provider ?? readProviderSelection();
 
+  // Deposit does not require a provider — always first
   if (options.deposit) {
     await depositToLedger(broker, options.deposit);
     appliedActions.push("deposit_ledger");
   }
+
+  // Resolve provider: explicit --provider triggers canonical persist + sync;
+  // otherwise resolve from live services without persist.
+  const services = await listChatServices(broker);
+  let selection = options.provider
+    ? (await selectFundProvider(options.provider, services)).selection
+    : resolvePreferredComputeSelection(services);
+
+  if (options.provider) {
+    appliedActions.push("select_provider");
+  }
+
+  const provider = selection?.provider ?? null;
 
   if (!provider && (options.amount || options.ack || options.tokenId != null)) {
     writeEchoWorkflow({
@@ -352,28 +381,25 @@ export async function runHeadlessFund(options: FundApplyOptions & { apply?: bool
   }
 
   let apiKeySummary: Record<string, unknown> | null = null;
-  if (provider && options.tokenId != null) {
-    const apiKey = await createApiKey(broker, provider, Number(options.tokenId));
+  if (provider && selection && options.tokenId != null) {
+    const result = await createCanonicalApiKey({
+      broker,
+      selection,
+      tokenId: Number(options.tokenId),
+      saveClaudeToken: options.saveClaudeToken,
+      patchOpenclaw: options.runtime ? normalizeRuntime(options.runtime) === "openclaw" : false,
+    });
     appliedActions.push("create_api_key");
-    let storedForClaude = false;
-    if (options.saveClaudeToken) {
-      storedForClaude = saveClaudeTokenNonInteractive(provider, apiKey.rawToken);
-      if (!storedForClaude) warnings.push("API key was created, but it did not match the active Claude runtime provider.");
-    }
     apiKeySummary = options.emitSecrets
-      ? { tokenId: apiKey.tokenId, token: apiKey.rawToken, storedForClaude }
-      : { tokenId: apiKey.tokenId, storedForClaude };
+      ? { tokenId: result.apiKey.tokenId, token: result.apiKey.rawToken, storedForClaude: result.claudeTokenSaved }
+      : { tokenId: result.apiKey.tokenId, storedForClaude: result.claudeTokenSaved };
+    if (options.saveClaudeToken && !result.claudeTokenSaved) {
+      warnings.push("API key was created, but it did not match the active Claude runtime provider.");
+    }
+    warnings.push(...result.warnings);
   }
 
   const view = await buildFundView({ provider, fresh: true });
-  if (view.provider && view.model) {
-    saveComputeState({
-      activeProvider: view.provider,
-      model: view.model,
-      configuredAt: Date.now(),
-    });
-  }
-
   const payload = buildFundPayload(view, runtimeHint);
   writeEchoWorkflow({
     ...payload,

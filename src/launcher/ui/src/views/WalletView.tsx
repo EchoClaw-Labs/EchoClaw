@@ -3,18 +3,11 @@ import { PageHeader } from "../components/PageHeader";
 import { SetupCard } from "../components/SetupCard";
 import { ActionModal } from "../components/ActionModal";
 import { WaveSpinner } from "../components/WaveSpinner";
-import { getSnapshot, postApi } from "../api";
+import { getWalletSummary, postApi, type WalletSummary, type WalletState, type WalletNativeBalance } from "../api";
 
 function trunc(addr: string | null): string {
   if (!addr) return "—";
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
-}
-
-interface Wallet {
-  evmAddress: string | null; solanaAddress: string | null;
-  evmKeystorePresent: boolean; solanaKeystorePresent: boolean;
-  password: { status: string; source: string };
-  decryptable: boolean;
 }
 
 interface BackupEntry { dir: string; manifest: { createdAt: string; walletAddress: string | null; solanaWalletAddress: string | null } }
@@ -24,8 +17,9 @@ type ModalType = "password" | "createEvm" | "createSol" | "importEvm" | "importS
 interface Props { onNavigate: (p: string) => void }
 
 export const WalletView: FC<Props> = ({ onNavigate }) => {
-  const [wallet, setWallet] = useState<Wallet | null>(null);
+  const [view, setView] = useState<WalletSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [modal, setModal] = useState<ModalType>(null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -43,17 +37,26 @@ export const WalletView: FC<Props> = ({ onNavigate }) => {
   // Pending restore action for restore confirmation flow
   const [pendingRestore, setPendingRestore] = useState<{ backupDir: string } | null>(null);
 
-  const refresh = useCallback(async () => {
-    try {
-      const snap = await getSnapshot();
-      setWallet((snap as { wallet: Wallet }).wallet);
-    } catch { /* */ }
-    finally { setLoading(false); }
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 4000);
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  const refresh = useCallback(async (fresh = false, mode: "initial" | "manual" | "after-action" = "manual") => {
+    if (mode === "initial") setLoading(true);
+    else setRefreshing(true);
+    try {
+      const nextView = await getWalletSummary(fresh);
+      setView(nextView);
+    } catch {
+      if (mode !== "initial") showToast("Failed to refresh wallet");
+    } finally {
+      if (mode === "initial") setLoading(false);
+      else setRefreshing(false);
+    }
+  }, [showToast]);
 
-  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 4000); };
+  useEffect(() => { void refresh(false, "initial"); }, [refresh]);
 
   const doAction = async (path: string, body: Record<string, unknown>) => {
     setBusy(true);
@@ -69,7 +72,7 @@ export const WalletView: FC<Props> = ({ onNavigate }) => {
       }
       showToast((r.summary as string) ?? "Done");
       setModal(null);
-      await refresh();
+      await refresh(true, "after-action");
     } catch { showToast("Error"); }
     finally { setBusy(false); }
   };
@@ -99,13 +102,91 @@ export const WalletView: FC<Props> = ({ onNavigate }) => {
     } catch { showToast("Failed to load backups"); }
   };
 
+  const wallet: WalletState | null = view?.wallet ?? null;
+
+  const copyText = async (value: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      showToast(`${label} copied`);
+    } catch {
+      showToast("Clipboard unavailable");
+    }
+  };
+
+  const renderWalletDetails = (label: string, balance: WalletNativeBalance) => {
+    if (!balance.address) {
+      return <p className="text-xs text-zinc-500">Not configured</p>;
+    }
+
+    const balanceLine = balance.balance && balance.symbol
+      ? `${balance.balance} ${balance.symbol}`
+      : "Unavailable";
+
+    return (
+      <div className="space-y-3">
+        <div className="space-y-1">
+          <div className="text-[11px] uppercase tracking-wide text-zinc-600">{label} address</div>
+          <div className="flex items-start gap-2">
+            <span className="min-w-0 break-all font-mono text-[11px] leading-relaxed text-zinc-400">{balance.address}</span>
+            <button
+              onClick={() => { void copyText(balance.address!, label); }}
+              className="ml-auto flex-shrink-0 text-xs text-zinc-500 hover:text-white transition"
+            >
+              Copy
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <div className="text-[11px] uppercase tracking-wide text-zinc-600">Native balance</div>
+          <div className="text-sm text-zinc-300">{balanceLine}</div>
+          {balance.chainName && (
+            <div className="text-[11px] text-zinc-500">{balance.chainName}</div>
+          )}
+          {balance.error && (
+            <div className="text-[11px] text-status-warn">{balance.error}</div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   if (loading) return <div className="flex justify-center py-20"><WaveSpinner size="lg" /></div>;
+
+  if (!view) {
+    return (
+      <div className="mx-auto max-w-5xl px-5 py-8">
+        <PageHeader title="Wallet & Keys" description="Manage EVM and Solana wallets, backups, and passwords" onBack={() => onNavigate("/")} />
+        {toast && <div className="fixed bottom-6 right-6 z-50 rounded-xl border border-white/[0.1] bg-zinc-900 px-4 py-3 text-sm text-zinc-200 shadow-lg">{toast}</div>}
+        <div className="rounded-2xl border border-white/[0.06] bg-zinc-950/50 p-6 text-sm text-zinc-400">
+          <p>Failed to load wallet details.</p>
+          <button
+            onClick={() => { void refresh(true, "manual"); }}
+            className="mt-4 rounded-lg bg-zinc-800/80 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-700 transition"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-5xl px-5 py-8">
       <PageHeader title="Wallet & Keys" description="Manage EVM and Solana wallets, backups, and passwords" onBack={() => onNavigate("/")} />
 
       {toast && <div className="fixed bottom-6 right-6 z-50 rounded-xl border border-white/[0.1] bg-zinc-900 px-4 py-3 text-sm text-zinc-200 shadow-lg">{toast}</div>}
+
+      <div className="mb-6 flex items-center gap-3 flex-wrap">
+        <span className="text-xs text-zinc-600">Updated: {view ? new Date(view.refreshedAt).toLocaleTimeString() : "—"}</span>
+        <button
+          onClick={() => { void refresh(true, "manual"); }}
+          disabled={refreshing || busy}
+          className="rounded-lg bg-zinc-800/80 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-700 transition disabled:opacity-50"
+        >
+          {refreshing ? "Refreshing..." : "Refresh"}
+        </button>
+      </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 mb-6">
         <SetupCard
@@ -122,17 +203,7 @@ export const WalletView: FC<Props> = ({ onNavigate }) => {
           detail={trunc(wallet?.evmAddress ?? null)}
           action={{ label: wallet?.evmKeystorePresent ? "Import New" : "Create", onClick: () => setModal(wallet?.evmKeystorePresent ? "importEvm" : "createEvm") }}
         >
-          {wallet?.evmAddress && (
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-[11px] text-zinc-500 truncate">{wallet.evmAddress}</span>
-              <button
-                onClick={() => { navigator.clipboard.writeText(wallet.evmAddress!); showToast("Copied!"); }}
-                className="ml-auto flex-shrink-0 text-xs text-zinc-500 hover:text-white transition"
-              >
-                Copy
-              </button>
-            </div>
-          )}
+          {renderWalletDetails("EVM", view?.balances.evm ?? { address: null, configured: false, chainId: null, chainName: null, symbol: null, balance: null, error: null })}
         </SetupCard>
         <SetupCard
           title="Solana Wallet"
@@ -141,17 +212,7 @@ export const WalletView: FC<Props> = ({ onNavigate }) => {
           detail={trunc(wallet?.solanaAddress ?? null)}
           action={{ label: wallet?.solanaKeystorePresent ? "Import New" : "Create", onClick: () => setModal(wallet?.solanaKeystorePresent ? "importSol" : "createSol") }}
         >
-          {wallet?.solanaAddress && (
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-[11px] text-zinc-500 truncate">{wallet.solanaAddress}</span>
-              <button
-                onClick={() => { navigator.clipboard.writeText(wallet.solanaAddress!); showToast("Copied!"); }}
-                className="ml-auto flex-shrink-0 text-xs text-zinc-500 hover:text-white transition"
-              >
-                Copy
-              </button>
-            </div>
-          )}
+          {renderWalletDetails("Solana", view?.balances.solana ?? { address: null, configured: false, chainId: null, chainName: null, symbol: null, balance: null, error: null })}
         </SetupCard>
       </div>
 

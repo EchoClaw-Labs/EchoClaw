@@ -22,6 +22,22 @@ import { autoBackup, listBackups } from "../../commands/wallet/backup.js";
 import { CONFIG_DIR, KEYSTORE_FILE, SOLANA_KEYSTORE_FILE } from "../../config/paths.js";
 import { EchoError } from "../../errors.js";
 import logger from "../../utils/logger.js";
+import { buildWalletView } from "../../commands/echo/wallet-view.js";
+
+// ── GET /api/wallet/summary ──────────────────────────────────────
+
+const handleSummary: RouteHandler = async (_req, res, params) => {
+  const fresh = params.query.fresh === "1" || params.query.fresh === "true";
+
+  try {
+    const view = await buildWalletView({ fresh });
+    jsonResponse(res, 200, view);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    errorResponse(res, 500, "WALLET_SUMMARY_FAILED", `Failed to build wallet summary: ${msg}`,
+      "Ensure wallet is configured and RPC endpoints are reachable.");
+  }
+};
 
 // ── POST /api/wallet/password ────────────────────────────────────
 
@@ -225,6 +241,7 @@ const handleExport: RouteHandler = async (_req, res, params) => {
 // ── Registration ─────────────────────────────────────────────────
 
 export function registerWalletRoutes(): void {
+  registerRoute("GET", "/api/wallet/summary", handleSummary);
   registerRoute("POST", "/api/wallet/password", handleSetPassword);
   registerRoute("POST", "/api/wallet/create", handleCreate);
   registerRoute("POST", "/api/wallet/import", handleImport);

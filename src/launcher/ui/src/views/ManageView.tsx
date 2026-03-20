@@ -63,9 +63,13 @@ export const ManageView: FC<Props> = ({ onNavigate }) => {
         wallet: wallet?.configuredAddress
           ? `${String(wallet.configuredAddress).slice(0, 10)}...`
           : wallet?.keystorePresent ? "Keystore present" : "Not configured",
-        compute: compute?.readiness
-          ? (compute.readiness as Record<string, unknown>).ready ? "Ready" : String((compute.readiness as Record<string, unknown>).detail ?? "Not ready")
-          : "Unknown",
+        compute: (() => {
+          const r = compute?.readiness as { ready?: boolean; provider?: string; checks?: Record<string, { ok?: boolean; detail?: string }> } | null | undefined;
+          if (!r) return "Unknown";
+          if (r.ready) return `Ready${r.provider ? ` (${r.provider.slice(0, 10)}...)` : ""}`;
+          const failedCheck = r.checks ? Object.entries(r.checks).find(([, c]) => !c.ok) : null;
+          return failedCheck ? `Not ready: ${failedCheck[1].detail ?? failedCheck[0]}` : "Not ready";
+        })(),
         runtime: runtimes?.recommended ? String(runtimes.recommended) : "Unknown",
         monitor: monitor?.running ? `Running (PID ${monitor.pid ?? "?"})` : "Stopped",
       });

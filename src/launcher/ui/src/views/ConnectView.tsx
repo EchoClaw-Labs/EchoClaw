@@ -88,7 +88,7 @@ export const ConnectView: FC<Props> = ({ onNavigate }) => {
       const r = await postApi<ConnectResult>("/api/connect/apply", {
         runtime, scope, force: false,
         ...(allowWalletMutation ? { allowWalletMutation: true } : {}),
-        claudeScope, startProxy,
+        ...(runtime === "claude-code" ? { claudeScope, startProxy } : {}),
       });
       setResult(r);
       showToast((r.summary as string) ?? "Applied");
@@ -202,6 +202,14 @@ export const ConnectView: FC<Props> = ({ onNavigate }) => {
             <div><span className="text-zinc-500">Status:</span> <span className="text-zinc-300">{result.status as string}</span></div>
             <div><span className="text-zinc-500">Summary:</span> <span className="text-zinc-300">{result.summary as string}</span></div>
             {result.nextAction && <div><span className="text-zinc-500">Next:</span> <span className="text-neon-blue">{result.nextAction as string}</span></div>}
+            {result.createdWalletAddress && (
+              <div className="flex items-center gap-2">
+                <span className="text-zinc-500">Wallet created:</span>
+                <code className="text-xs text-white font-mono">{result.createdWalletAddress as string}</code>
+                <button onClick={() => navigator.clipboard.writeText(result.createdWalletAddress as string)}
+                  className="text-xs text-zinc-500 hover:text-white transition">Copy</button>
+              </div>
+            )}
             {(result.warnings as string[])?.length > 0 && (
               <div className="text-status-warn">{(result.warnings as string[]).join(", ")}</div>
             )}

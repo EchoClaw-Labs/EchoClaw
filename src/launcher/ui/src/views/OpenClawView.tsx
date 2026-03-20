@@ -219,7 +219,7 @@ export const OpenClawView: FC<Props> = ({ onNavigate }) => {
                   <p className={`text-xs ${s.status.configured ? "text-status-ok" : "text-zinc-400"}`}>
                     {s.status.summary}
                     {s.key === "wallet" && s.status.configured && s.status.summary && (() => {
-                      const match = s.status.summary.match(/0x[a-fA-F0-9]{40}/);
+                      const match = s.status.summary.match(/0x[a-fA-F0-9]{40}/) ?? s.status.summary.match(/[1-9A-HJ-NP-Za-km-z]{32,44}/);
                       return match ? (
                         <button onClick={() => { navigator.clipboard.writeText(match[0]); showToast("Address copied!"); }}
                           className="ml-2 rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400 hover:text-white hover:bg-zinc-700 transition">

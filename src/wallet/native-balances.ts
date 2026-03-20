@@ -71,9 +71,13 @@ async function fetchEvmNativeBalance(
   }
 }
 
-async function fetchSolanaNativeBalance(address: string, chain: KhalaniChain): Promise<NativeBalanceResult> {
+async function fetchSolanaNativeBalance(
+  address: string,
+  chain: KhalaniChain,
+  rpcUrlOverride?: string,
+): Promise<NativeBalanceResult> {
   try {
-    const rpcUrl = chain.rpcUrls?.default?.http?.[0];
+    const rpcUrl = rpcUrlOverride ?? chain.rpcUrls?.default?.http?.[0];
     if (!rpcUrl) {
       throw new Error(`Chain ${chain.id} does not expose an RPC URL.`);
     }
@@ -107,12 +111,12 @@ export async function collectNativeBalances(
   address: string,
   family: ChainFamily,
   chains: KhalaniChain[],
-  opts: { chainIds?: number[]; tokenChainIds?: number[]; preferredChainId?: number } = {},
+  opts: { chainIds?: number[]; tokenChainIds?: number[]; preferredChainId?: number; solanaRpcUrl?: string } = {},
 ): Promise<NativeBalanceResult[]> {
   const relevantChains = selectNativeChains(family, chains, opts);
 
   return Promise.all(relevantChains.map((chain) =>
     family === "solana"
-      ? fetchSolanaNativeBalance(address, chain)
+      ? fetchSolanaNativeBalance(address, chain, opts.solanaRpcUrl)
       : fetchEvmNativeBalance(address, chain, chains)));
 }

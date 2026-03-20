@@ -1,12 +1,6 @@
-import type { ProviderName } from "../../providers/types.js";
 import type { LauncherItem } from "./types.js";
 
-export const PROVIDER_LABELS: Record<ProviderName, string> = {
-  "openclaw": "OpenClaw",
-  "claude-code": "Claude Code",
-  "codex": "Codex",
-  "other": "Other",
-};
+export { PROVIDER_LABELS } from "../../shared/runtime-catalog.js";
 
 export const EXPLORE_ITEMS: LauncherItem[] = [
   {

@@ -29,6 +29,8 @@ export interface FundView {
   acknowledged: boolean | null;
   monitorRunning: boolean;
   monitorTrackingProvider: boolean;
+  requiresApiKeyRotation: boolean;
+  selectionWarning: string | null;
   refreshedAt: string;
 }
 

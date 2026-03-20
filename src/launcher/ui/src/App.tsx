@@ -60,7 +60,10 @@ export const App: FC = () => {
 
   function renderView() {
     if (viewMode === "wizard") {
-      return <WizardView onComplete={() => { setViewMode("dashboard"); setCurrentPath("/"); }} />;
+      return <WizardView onComplete={() => {
+        setViewMode("dashboard"); setCurrentPath("/");
+        getRouting().then(r => setRouting(r)).catch(() => {});
+      }} />;
     }
 
     switch (currentPath) {

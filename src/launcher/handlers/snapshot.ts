@@ -11,7 +11,7 @@ import { registerRoute } from "../routes.js";
 import { buildEchoSnapshot } from "../../commands/echo/snapshot.js";
 import { buildDoctorChecks } from "../../commands/echo/doctor.js";
 import { buildSupportReport } from "../../commands/echo/support-report.js";
-import { buildConnectPayload, buildVerifyPayload, normalizeRuntime, defaultScopeForRuntime } from "../../commands/echo/assessment.js";
+import { buildVerifyPayload, normalizeRuntime } from "../../commands/echo/assessment.js";
 import { autoDetectProvider } from "../../providers/registry.js";
 import type { RoutingDecision } from "../types.js";
 
@@ -55,8 +55,6 @@ const handleSupportReport: RouteHandler = async (_req, res) => {
 
 const handleRouting: RouteHandler = async (_req, res) => {
   const snapshot = await buildEchoSnapshot({ includeReadiness: true });
-  const runtime = autoDetectProvider().name;
-  const connectPayload = buildConnectPayload(snapshot, runtime, defaultScopeForRuntime(runtime));
 
   let decision: RoutingDecision;
 
@@ -64,10 +62,19 @@ const handleRouting: RouteHandler = async (_req, res) => {
     decision = { mode: "wizard", reason: "no_wallet" };
   } else if (!snapshot.configExists) {
     decision = { mode: "wizard", reason: "no_config" };
-  } else if (connectPayload.status !== "ready") {
-    decision = { mode: "dashboard", reason: "setup_incomplete" };
   } else {
-    decision = { mode: "dashboard", reason: "ready" };
+    // Core compute readiness: wallet + broker + ledger + sub-account + ACK.
+    // Runtime-specific checks (OpenClaw apiKey, Claude config) are not blocking —
+    // those are per-runtime concerns handled in Connect/Fund views.
+    const checks = snapshot.compute.readiness?.checks;
+    const coreComputeReady = checks
+      ? checks.wallet.ok && checks.broker.ok && checks.ledger.ok
+        && checks.subAccount.ok && checks.ack.ok
+      : false;
+
+    decision = coreComputeReady
+      ? { mode: "dashboard", reason: "ready" }
+      : { mode: "dashboard", reason: "setup_incomplete" };
   }
 
   jsonResponse(res, 200, decision);

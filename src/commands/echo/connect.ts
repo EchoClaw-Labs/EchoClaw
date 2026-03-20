@@ -1,10 +1,14 @@
 import inquirer from "inquirer";
-import { loadConfig } from "../../config/store.js";
+import { loadConfig, saveConfig } from "../../config/store.js";
 import { createWallet } from "../../wallet/create.js";
 import { autoDetectProvider } from "../../providers/registry.js";
 import type { ProviderName } from "../../providers/types.js";
 import { injectClaudeSettings } from "../claude/config-cmd.js";
 import { spawnClaudeProxy } from "../../utils/daemon-spawn.js";
+import { CLAUDE_PROXY_DEFAULT_PORT } from "../../claude/constants.js";
+import { resolvePreferredComputeSelection } from "./compute-selection.js";
+import { listChatServices } from "../../0g-compute/operations.js";
+import { getAuthenticatedBroker } from "../../0g-compute/broker-factory.js";
 import { successBox, infoBox, warnBox } from "../../utils/ui.js";
 import { buildEchoSnapshot } from "./state.js";
 import { buildConnectPayload, defaultScopeForRuntime, normalizeRuntime, runtimeChoiceName } from "./assessment.js";
@@ -76,7 +80,29 @@ export async function performConnectApply(options: ConnectApplyOptions): Promise
   }
 
   if (options.runtime === "claude-code") {
-    const cfg = loadConfig();
+    let cfg = loadConfig();
+
+    // Init config.claude from canonical compute selection if it doesn't exist
+    if (!cfg.claude) {
+      try {
+        const broker = await getAuthenticatedBroker();
+        const services = await listChatServices(broker);
+        const selection = resolvePreferredComputeSelection(services);
+        if (selection) {
+          cfg.claude = {
+            provider: selection.provider,
+            model: selection.model,
+            providerEndpoint: selection.endpoint,
+            proxyPort: CLAUDE_PROXY_DEFAULT_PORT,
+          };
+          saveConfig(cfg);
+          appliedActions.push("init_claude_config");
+        }
+      } catch {
+        // Broker/network unavailable — fall through to warning
+      }
+    }
+
     if (cfg.claude) {
       injectClaudeSettings(cfg, options.claudeScope);
       appliedActions.push("inject_claude_config");
@@ -92,7 +118,7 @@ export async function performConnectApply(options: ConnectApplyOptions): Promise
         }
       }
     } else {
-      warnings.push("Claude runtime is not configured yet. Fund a provider and create an API key first.");
+      warnings.push("Fund a provider and create an API key, then connect Claude Code.");
     }
   }
 

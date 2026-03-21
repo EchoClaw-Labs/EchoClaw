@@ -2,7 +2,13 @@ import winston from "winston";
 import type { Writable } from "node:stream";
 
 const LOG_LEVEL = process.env.LOG_LEVEL ?? "info";
-const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
+function shouldUseStructuredFormat(): boolean {
+  const explicit = process.env.LOG_FORMAT;
+  if (explicit === "json") return true;
+  if (explicit === "pretty") return false;
+  return !process.stderr.isTTY;
+}
 
 const colorizedFormat = winston.format.combine(
   winston.format.timestamp({ format: "HH:mm:ss" }),
@@ -23,9 +29,8 @@ export const logger = winston.createLogger({
   level: LOG_LEVEL,
   defaultMeta: {
     service: "echo-agent",
-    env: process.env.NODE_ENV ?? "development",
   },
-  format: IS_PRODUCTION ? structuredFormat : colorizedFormat,
+  format: shouldUseStructuredFormat() ? structuredFormat : colorizedFormat,
   transports: [
     new winston.transports.Stream({
       stream: process.stderr as unknown as Writable,

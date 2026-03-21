@@ -12,9 +12,9 @@ services:
         condition: service_healthy
     environment:
       AGENT_DB_URL: postgresql://echo_agent:${AGENT_POSTGRES_PASSWORD:-echo_agent}@postgres:5432/echo_agent
+      AGENT_BIND_HOST: "0.0.0.0"
       ECHO_KEYSTORE_PASSWORD: ${ECHO_KEYSTORE_PASSWORD:-}
       TAVILY_API_KEY: ${TAVILY_API_KEY:-}
-      NODE_ENV: production
     volumes:
       - ${ECHO_CONFIG_DIR:-~/.config/echoclaw}:/root/.config/echoclaw
     healthcheck:

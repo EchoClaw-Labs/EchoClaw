@@ -1,6 +1,6 @@
 # EchoClaw CLI — Developer Makefile
 
-.PHONY: build test dev clean agent-up agent-down agent-status agent-logs agent-reset
+.PHONY: build test dev clean agent-up agent-down agent-status agent-logs agent-reset dev-agent
 
 # -- Build & Test -------------------------------------------------------------
 
@@ -37,6 +37,20 @@ agent-logs:
 
 agent-reset:
 	$(COMPOSE) down -v
+
+# -- Full dev cycle: build + run agent from local source -----------------------
+
+dev-agent: build agent-down
+	ECHO_CONFIG_DIR="$(CONFIG_DIR)" ECHO_AGENT_IMAGE=$(AGENT_IMAGE) $(LOCAL_COMPOSE) up -d --build
+	@echo "Waiting for agent health..."
+	@for i in $$(seq 1 30); do \
+		if curl -sf http://127.0.0.1:4201/api/agent/health > /dev/null 2>&1; then \
+			echo "Agent ready at http://localhost:4201"; \
+			break; \
+		fi; \
+		if [ $$i -eq 30 ]; then echo "Agent did not become healthy in 60s"; exit 1; fi; \
+		sleep 2; \
+	done
 
 # -- Run agent from local dist -----------------------------------------------
 

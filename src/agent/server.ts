@@ -2,7 +2,7 @@
  * Echo Agent HTTP server (Postgres-backed).
  *
  * Auth: startup token generated on boot, required for all /api/* requests.
- * CORS: same-origin only in production, localhost dev via Vite proxy.
+ * CORS: localhost origins always allowed (Vite dev servers, same-host UIs).
  */
 
 import { randomBytes } from "node:crypto";
@@ -187,23 +187,18 @@ export async function startAgentServer(port?: number, writePid = false): Promise
   });
 
   // 5. HTTP server
-  const isDev = process.env.NODE_ENV !== "production";
-
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     const url = req.url ?? "/";
 
-    // Dev CORS (Vite proxy on different port) — restricted to known dev origins
-    if (isDev) {
-      const allowedDevOrigins = new Set(["http://localhost:4202", "http://127.0.0.1:4202", "http://localhost:4201", "http://127.0.0.1:4201"]);
-      const origin = req.headers.origin ?? "";
-      if (allowedDevOrigins.has(origin)) {
-        res.setHeader("Access-Control-Allow-Origin", origin);
-        res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-        res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-        res.setHeader("Access-Control-Allow-Credentials", "true");
-      }
-      if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
+    // CORS: allow localhost origins (Vite dev servers, same-host UIs)
+    const origin = req.headers.origin ?? "";
+    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+      res.setHeader("Access-Control-Allow-Credentials", "true");
     }
+    if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
 
     // Static files — no auth needed (SPA assets)
     if (!url.startsWith("/api/")) {

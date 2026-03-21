@@ -30,7 +30,7 @@ function runCli(args: string[], timeoutMs = 120_000): Promise<{ success: boolean
       try {
         resolve({ success: true, output: JSON.parse(stdout.trim()) });
       } catch {
-        resolve({ success: true, output: stdout.trim().slice(0, 2000) });
+        resolve({ success: false, output: null, error: `CLI returned non-JSON output: ${stdout.trim().slice(0, 500)}` });
       }
     });
   });

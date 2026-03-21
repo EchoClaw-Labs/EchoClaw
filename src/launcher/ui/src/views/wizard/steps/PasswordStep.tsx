@@ -13,13 +13,13 @@ export const PasswordStep: FC<Props> = ({ busy, onAction, onNext }) => {
   return (
     <>
       <div>
-        <label className="block text-xs text-zinc-400 mb-1">Password (min 8 chars)</label>
-        <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+        <label htmlFor="wizard-password" className="block text-xs text-zinc-400 mb-1">Password (min 8 chars)</label>
+        <input id="wizard-password" type="password" value={password} onChange={e => setPassword(e.target.value)}
           className="w-full rounded-lg border border-white/[0.1] bg-zinc-900 px-3 py-2 text-sm text-white focus:border-neon-blue focus:outline-none" />
       </div>
       <div>
-        <label className="block text-xs text-zinc-400 mb-1">Confirm password</label>
-        <input type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)}
+        <label htmlFor="wizard-confirm-password" className="block text-xs text-zinc-400 mb-1">Confirm password</label>
+        <input id="wizard-confirm-password" type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)}
           className="w-full rounded-lg border border-white/[0.1] bg-zinc-900 px-3 py-2 text-sm text-white focus:border-neon-blue focus:outline-none" />
       </div>
       <button disabled={busy || password.length < 8 || password !== confirmPw}

@@ -44,10 +44,21 @@ function getAuthToken(): string | null {
   return process.env.ZG_CLAUDE_AUTH_TOKEN ?? null;
 }
 
+const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10 MB
+
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on("data", (chunk: Buffer) => chunks.push(chunk));
+    let totalSize = 0;
+    req.on("data", (chunk: Buffer) => {
+      totalSize += chunk.length;
+      if (totalSize > MAX_BODY_SIZE) {
+        req.destroy();
+        reject(new Error("Request body too large"));
+        return;
+      }
+      chunks.push(chunk);
+    });
     req.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
     req.on("error", reject);
   });
@@ -90,8 +101,10 @@ async function handleMessages(req: IncomingMessage, res: ServerResponse): Promis
   let body: string;
   try {
     body = await readBody(req);
-  } catch {
-    errorResponse(res, 400, "invalid_request", "Failed to read request body");
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Failed to read request body";
+    const status = msg.includes("too large") ? 413 : 400;
+    errorResponse(res, status, "invalid_request", msg);
     return;
   }
 

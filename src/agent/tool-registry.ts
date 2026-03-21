@@ -58,12 +58,14 @@ const INTERNAL: ToolDef[] = [
   { name: "memory_update", kind: "internal", mutating: false, description: "Append to persistent memory",
     parameters: { type: "object", properties: { append: { type: "string" } }, required: ["append"] } },
   { name: "trade_log", kind: "internal", mutating: false, description: "Log a trade entry",
-    parameters: { type: "object", properties: { trade: { type: "string" } }, required: ["trade"] } },
+    parameters: { type: "object", properties: { trade: { type: "object", description: "TradeEntry object with type, chain, status, input, output, pnl, meta, reasoning" } }, required: ["trade"] } },
   { name: "schedule_create", kind: "internal", mutating: false, description: "Create a recurring cron task",
     parameters: { type: "object", properties: {
       name: { type: "string" }, cron: { type: "string" },
       type: { type: "string", enum: ["cli_execute", "inference", "alert", "snapshot", "backup"] },
-      description: { type: "string" }, payload: { type: "string" }, loopMode: { type: "string" },
+      description: { type: "string" },
+      payload: { type: "object", description: "Task payload — for inference: {prompt}, for cli_execute: {command, args?}, for alert: {message}" },
+      loopMode: { type: "string" },
     }, required: ["name", "cron", "type"] } },
   { name: "schedule_remove", kind: "internal", mutating: false, description: "Remove a scheduled task",
     parameters: { type: "object", properties: { id: { type: "string" } }, required: ["id"] } },
@@ -288,6 +290,43 @@ export function isInternal(name: string): boolean {
 
 export function isMutating(name: string): boolean {
   return byName.get(name)?.mutating === true;
+}
+
+/**
+ * Tools whose CLI commands actually declare a `--yes` option.
+ * Only these should receive `--yes` when auto-confirmed by executor/scheduler.
+ */
+const YES_SUPPORTED = new Set([
+  // 0G native transfers
+  "send_confirm",
+  // Solana transfers
+  "solana_send_confirm", "solana_send-token_confirm",
+  // Solana DeFi
+  "solana_swap_execute",
+  "solana_stake_delegate", "solana_stake_withdraw", "solana_stake_claim-mev",
+  "solana_dca_create", "solana_dca_cancel",
+  "solana_limit_create", "solana_limit_cancel",
+  "solana_lend_deposit", "solana_lend_withdraw",
+  "solana_predict_buy", "solana_predict_sell", "solana_predict_claim",
+  "solana_burn", "solana_close-accounts",
+  "solana_studio_create", "solana_studio_claim-fees",
+  "solana_send-invite", "solana_clawback",
+  // Khalani bridge
+  "khalani_bridge",
+  // Jaine DEX
+  "jaine_swap_sell", "jaine_swap_buy",
+  // Slop bonding
+  "slop_trade_buy", "slop_trade_sell",
+  // 0G Compute
+  "0g-compute_ledger_deposit", "0g-compute_ledger_fund",
+  "0g-compute_provider_ack",
+  "0g-compute_api-key_create", "0g-compute_api-key_revoke", "0g-compute_api-key_revoke-all",
+  // MarketMaker
+  "marketmaker_order_add",
+]);
+
+export function supportsYes(name: string): boolean {
+  return YES_SUPPORTED.has(name);
 }
 
 export function toOpenAITools(): OpenAITool[] {

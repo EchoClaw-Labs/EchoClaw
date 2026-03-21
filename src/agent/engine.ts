@@ -16,7 +16,7 @@ import { executeTool } from "./executor.js";
 import { webSearch, webFetch } from "./search.js";
 import { addTask, removeTask } from "./scheduler.js";
 import { getLedgerState, isLowBalance, recordBillingSnapshot } from "./billing.js";
-import { calculateBudget, calculateHybridBudget, buildCompactionPrompt, parseCompactionResult } from "./context.js";
+import { calculateBudget, calculateHybridBudget, parseCompactionResult } from "./context.js";
 import * as soulRepo from "./db/repos/soul.js";
 import * as memoryRepo from "./db/repos/memory.js";
 import * as sessionsRepo from "./db/repos/sessions.js";
@@ -26,6 +26,7 @@ import * as skillsRepo from "./db/repos/skills.js";
 import * as usageRepo from "./db/repos/usage.js";
 import * as tradesRepo from "./db/repos/trades.js";
 import * as approvalsRepo from "./db/repos/approvals.js";
+import { buildCompactionPrompt, getCompactionSystemPrompt } from "./prompts/compaction.js";
 import logger from "../utils/logger.js";
 
 // ── Session factory ──────────────────────────────────────────────────
@@ -316,10 +317,16 @@ async function processInternalTools(tools: InternalToolCall[], session: Conversa
     let output = "";
     let success = true;
 
+    /** Safe string accessor for tool params (type is Record<string, unknown>). */
+    const str = (key: string): string => {
+      const v = tool.params[key];
+      return typeof v === "string" ? v : "";
+    };
+
     try {
       switch (tool.type) {
         case "file_write": {
-          const { path, content } = tool.params;
+          const path = str("path"), content = str("content");
           if (!path || !content) { output = "Missing path or content"; success = false; break; }
           if (path.includes("..") && path !== "../soul.md") {
             output = `Blocked: path traversal "${path}"`; success = false; break;
@@ -334,7 +341,7 @@ async function processInternalTools(tools: InternalToolCall[], session: Conversa
           break;
         }
         case "file_read": {
-          const { path } = tool.params;
+          const path = str("path");
           if (!path) { output = "Missing path"; success = false; break; }
           let content = await knowledgeRepo.getFile(path);
           if (!content) content = await skillsRepo.getSkillReference(path);
@@ -348,7 +355,7 @@ async function processInternalTools(tools: InternalToolCall[], session: Conversa
           break;
         }
         case "file_list": {
-          const entries = await knowledgeRepo.listFiles(tool.params.path ?? "");
+          const entries = await knowledgeRepo.listFiles(str("path"));
           const content = JSON.stringify(entries, null, 2);
           const listMsg: Message = { role: "tool", content, timestamp: new Date().toISOString() };
           session.messages.push(listMsg);
@@ -357,8 +364,9 @@ async function processInternalTools(tools: InternalToolCall[], session: Conversa
           break;
         }
         case "file_delete": {
-          const { path } = tool.params;
+          const path = str("path");
           if (!path) { output = "Missing path"; success = false; break; }
+          if (path.includes("..")) { output = `Blocked: path traversal "${path}"`; success = false; break; }
           await knowledgeRepo.deleteFile(path);
           session.loadedKnowledge.delete(path);
           emit({ type: "file_update", data: { path, action: "deleted" } });
@@ -366,7 +374,7 @@ async function processInternalTools(tools: InternalToolCall[], session: Conversa
           break;
         }
         case "memory_update": {
-          const { append } = tool.params;
+          const append = str("append");
           if (!append) { output = "Missing append text"; success = false; break; }
           await memoryRepo.appendMemory(append, undefined, "agent");
           emit({ type: "file_update", data: { path: "memory.md", action: "updated" } });
@@ -374,7 +382,7 @@ async function processInternalTools(tools: InternalToolCall[], session: Conversa
           break;
         }
         case "web_search": {
-          const { query } = tool.params;
+          const query = str("query");
           if (!query) { output = "Missing query"; success = false; break; }
           const results = await webSearch(query);
           const content = JSON.stringify(results, null, 2);
@@ -385,7 +393,7 @@ async function processInternalTools(tools: InternalToolCall[], session: Conversa
           break;
         }
         case "web_fetch": {
-          const { url } = tool.params;
+          const url = str("url");
           if (!url || (!url.startsWith("http://") && !url.startsWith("https://"))) {
             output = "Invalid URL"; success = false; break;
           }
@@ -401,7 +409,16 @@ async function processInternalTools(tools: InternalToolCall[], session: Conversa
           break;
         }
         case "trade_log": {
-          const trade = JSON.parse(tool.params.trade ?? "{}") as Partial<TradeEntry>;
+          const rawTrade = tool.params.trade;
+          let trade: Partial<TradeEntry>;
+          if (typeof rawTrade === "object" && rawTrade !== null) {
+            trade = rawTrade as Partial<TradeEntry>;
+          } else if (typeof rawTrade === "string") {
+            try { trade = JSON.parse(rawTrade) as Partial<TradeEntry>; }
+            catch { output = "Invalid trade entry — expected JSON object"; success = false; break; }
+          } else {
+            trade = {};
+          }
           if (!trade.type || !trade.chain || !trade.status || !trade.input || !trade.output) {
             output = "Incomplete trade entry"; success = false; break;
           }
@@ -420,18 +437,33 @@ async function processInternalTools(tools: InternalToolCall[], session: Conversa
         }
         case "schedule_create": {
           const p = tool.params;
-          const taskType = p.type ?? "inference";
+          const taskType = str("type") || "inference";
           const validTaskTypes = new Set(["cli_execute", "inference", "alert", "snapshot", "backup"]);
           if (!validTaskTypes.has(taskType)) {
             output = `Invalid task type: ${taskType}`; success = false; break;
           }
-          const cronExpr = p.cron ?? "0 * * * *";
+          const cronExpr = str("cron") || "0 * * * *";
           const { default: cron } = await import("node-cron");
           if (!cron.validate(cronExpr)) {
             output = `Invalid cron: ${cronExpr}`; success = false; break;
           }
-          const payload = p.payload ? (typeof p.payload === "string" ? JSON.parse(p.payload) : p.payload as Record<string, unknown>) : {};
-          const effectiveLoopMode = loopMode === "full" ? (p.loopMode ?? "full") : "restricted";
+          let payload: Record<string, unknown>;
+          if (!p.payload) {
+            payload = {};
+          } else if (typeof p.payload === "object") {
+            payload = p.payload as Record<string, unknown>;
+          } else if (typeof p.payload === "string") {
+            // Smart resolution: plain string → per-type key (inference→prompt, cli_execute→command, alert→message)
+            try { payload = JSON.parse(p.payload) as Record<string, unknown>; }
+            catch {
+              const keyMap: Record<string, string> = { inference: "prompt", cli_execute: "command", alert: "message" };
+              const key = keyMap[taskType] ?? "prompt";
+              payload = { [key]: p.payload };
+            }
+          } else {
+            payload = {};
+          }
+          const effectiveLoopMode = loopMode === "full" ? (str("loopMode") || "full") : "restricted";
 
           if (taskType === "cli_execute" && payload.command) {
             const cmdSnake = String(payload.command).replace(/\s+/g, "_");
@@ -441,13 +473,13 @@ async function processInternalTools(tools: InternalToolCall[], session: Conversa
           }
 
           const taskId = generateId("task");
-          await addTask({ id: taskId, name: p.name ?? "Unnamed task", description: p.description, cronExpression: cronExpr, taskType, payload, loopMode: effectiveLoopMode });
-          emit({ type: "file_update", data: { path: "tasks", action: "created", taskId, name: p.name } });
+          await addTask({ id: taskId, name: str("name") || "Unnamed task", description: str("description"), cronExpression: cronExpr, taskType, payload, loopMode: effectiveLoopMode });
+          emit({ type: "file_update", data: { path: "tasks", action: "created", taskId, name: str("name") } });
           output = `Task created: ${taskId}`;
           break;
         }
         case "schedule_remove": {
-          const taskId = tool.params.id;
+          const taskId = str("id");
           if (!taskId) { output = "Missing task ID"; success = false; break; }
           const ok = await removeTask(taskId);
           emit({ type: "file_update", data: { path: "tasks", action: ok ? "removed" : "not_found", taskId } });
@@ -473,7 +505,7 @@ async function compactSession(session: ConversationSession, emit: EventEmitter):
   emit({ type: "status", data: { type: "compacting" } });
 
   const compactionMessages: Message[] = [
-    { role: "system", content: "You are a session summarizer. Produce a structured summary.", timestamp: new Date().toISOString() },
+    { role: "system", content: getCompactionSystemPrompt(), timestamp: new Date().toISOString() },
     { role: "user", content: buildCompactionPrompt(session.messages), timestamp: new Date().toISOString() },
   ];
 
@@ -511,6 +543,12 @@ ${summary}`, timestamp: new Date().toISOString() }];
 
     logger.info("[agent] compaction complete — new session started");
   } catch (err) {
-    logger.error(`[agent] compaction failed: ${err instanceof Error ? err.message : String(err)}`);
+    logger.error("agent.session.compaction_failed", {
+      sessionId: session.id,
+      error: err instanceof Error ? err.message : String(err),
+      messageCount: session.messages.length,
+    });
+    // Do NOT mutate session state on failure — keep existing messages intact
+    emit({ type: "error", data: { message: "Context compaction failed — session continues with current context" } });
   }
 }

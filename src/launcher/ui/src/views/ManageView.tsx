@@ -35,7 +35,7 @@ export const ManageView: FC<Props> = ({ onNavigate }) => {
       const res = await fetch("/api/doctor");
       const data = await res.json() as { checks: DoctorCheck[] };
       setDoctorChecks(data.checks);
-    } catch { /* ignore */ }
+    } catch (err) { console.error("[ManageView]", err); }
     setDoctorLoading(false);
   };
 
@@ -45,7 +45,7 @@ export const ManageView: FC<Props> = ({ onNavigate }) => {
     try {
       const result = await getVerify();
       setVerifyResult(result);
-    } catch { /* ignore */ }
+    } catch (err) { console.error("[ManageView]", err); }
     setVerifyLoading(false);
   };
 
@@ -73,7 +73,7 @@ export const ManageView: FC<Props> = ({ onNavigate }) => {
         runtime: runtimes?.recommended ? String(runtimes.recommended) : "Unknown",
         monitor: monitor?.running ? `Running (PID ${monitor.pid ?? "?"})` : "Stopped",
       });
-    } catch { /* ignore */ }
+    } catch (err) { console.error("[ManageView]", err); }
     setStatusLoading(false);
   };
 
@@ -84,7 +84,7 @@ export const ManageView: FC<Props> = ({ onNavigate }) => {
       await getSnapshot(true);
       setRefreshDone(true);
       setTimeout(() => setRefreshDone(false), 4000);
-    } catch { /* ignore */ }
+    } catch (err) { console.error("[ManageView]", err); }
     setRefreshLoading(false);
   };
 
@@ -93,7 +93,7 @@ export const ManageView: FC<Props> = ({ onNavigate }) => {
       const res = await fetch("/api/support-report");
       const data = await res.json();
       setSupportReport(JSON.stringify(data, null, 2));
-    } catch { /* ignore */ }
+    } catch (err) { console.error("[ManageView]", err); }
   };
 
   const actions = [

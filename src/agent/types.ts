@@ -32,7 +32,7 @@ export type InternalToolType =
 
 export interface InternalToolCall {
   type: InternalToolType;
-  params: Record<string, string>;
+  params: Record<string, unknown>;
 }
 
 // ── Messages ─────────────────────────────────────────────────────────

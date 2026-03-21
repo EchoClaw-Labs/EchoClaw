@@ -1,5 +1,5 @@
 import { randomBytes, scryptSync, createCipheriv, createDecipheriv } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, renameSync, unlinkSync, chmodSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import type { Hex } from "viem";
 import { KEYSTORE_FILE } from "../config/paths.js";
@@ -130,6 +130,9 @@ export function saveKeystoreFile(path: string, keystore: KeystoreV1): void {
 
   try {
     writeFileSync(tmpFile, JSON.stringify(keystore, null, 2), "utf-8");
+    if (process.platform !== "win32") {
+      try { chmodSync(tmpFile, 0o600); } catch { /* non-fatal on platforms without POSIX perms */ }
+    }
     renameSync(tmpFile, path);
     logger.debug(`Keystore saved to ${path}`);
   } catch (err) {

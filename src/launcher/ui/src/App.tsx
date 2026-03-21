@@ -1,7 +1,34 @@
-import { type FC, useEffect, useState, useCallback } from "react";
+import { Component, type FC, type ReactNode, type ErrorInfo, useEffect, useState, useCallback } from "react";
 import { Navbar } from "./components/Navbar";
 import { SparklesBackground } from "./components/SparklesBackground";
 import { WaveSpinner } from "./components/WaveSpinner";
+
+// ── Error Boundary ───────────────────────────────────────────────────
+interface EBProps { children: ReactNode }
+interface EBState { hasError: boolean; error: Error | null }
+
+class ErrorBoundary extends Component<EBProps, EBState> {
+  constructor(props: EBProps) { super(props); this.state = { hasError: false, error: null }; }
+  static getDerivedStateFromError(error: Error): EBState { return { hasError: true, error }; }
+  componentDidCatch(error: Error, info: ErrorInfo) { console.error("[LauncherErrorBoundary]", error, info.componentStack); }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="p-8 text-center max-w-md">
+            <h2 className="text-lg font-semibold text-red-400 mb-2">Something went wrong</h2>
+            <p className="text-sm text-zinc-400 mb-4">{this.state.error?.message}</p>
+            <button onClick={() => this.setState({ hasError: false, error: null })}
+              className="px-4 py-2 text-sm rounded-lg border border-white/10 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 transition">
+              Try again
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import { DashboardView } from "./views/DashboardView";
 import { ConnectView } from "./views/ConnectView";
 import { FundView } from "./views/FundView";
@@ -81,23 +108,27 @@ export const App: FC = () => {
   }
 
   return (
-    <div className="min-h-screen relative">
-      <SparklesBackground density={50} speed={0.3} />
+    <ErrorBoundary>
+      <div className="min-h-screen relative">
+        <SparklesBackground density={50} speed={0.3} />
 
-      <div className="relative z-10">
-        <Navbar
-          version={version}
-          overallStatus={overallStatus}
-          statusLabel={statusLabel}
-          onNavigate={navigate}
-        />
+        <div className="relative z-10">
+          <Navbar
+            version={version}
+            overallStatus={overallStatus}
+            statusLabel={statusLabel}
+            onNavigate={navigate}
+          />
 
-        <main className="pt-6" key={currentPath}>
-          <div className="animate-fade-in">
-            {renderView()}
-          </div>
-        </main>
+          <main className="pt-6" key={currentPath}>
+            <ErrorBoundary>
+              <div className="animate-fade-in">
+                {renderView()}
+              </div>
+            </ErrorBoundary>
+          </main>
+        </div>
       </div>
-    </div>
+    </ErrorBoundary>
   );
 };

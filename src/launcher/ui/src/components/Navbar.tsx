@@ -58,11 +58,15 @@ export const Navbar: FC<NavbarProps> = ({ version, overallStatus, statusLabel, o
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
 
+  const openDropdown = (id: string) => { setActiveDropdown(id); setHoveredItem(id); };
+  const closeDropdown = () => { setActiveDropdown(null); setHoveredItem(null); };
+
   return (
     <header className="sticky top-0 z-40 w-full px-4 pt-4">
       <div
         className="relative mx-auto max-w-4xl"
-        onMouseLeave={() => { setActiveDropdown(null); setHoveredItem(null); }}
+        onMouseLeave={closeDropdown}
+        onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) closeDropdown(); }}
       >
         {/* Main bar */}
         <div className={cn(
@@ -86,8 +90,12 @@ export const Navbar: FC<NavbarProps> = ({ version, overallStatus, statusLabel, o
               <button
                 key={section.id}
                 type="button"
-                className="relative flex h-9 items-center gap-1.5 rounded-xl px-3.5 py-2 text-sm text-zinc-400 transition-colors hover:text-zinc-100"
-                onMouseEnter={() => { setActiveDropdown(section.id); setHoveredItem(section.id); }}
+                className="relative flex h-9 items-center gap-1.5 rounded-xl px-3.5 py-2 text-sm text-zinc-400 transition-colors hover:text-zinc-100 focus:text-zinc-100 focus:outline-none focus-visible:ring-1 focus-visible:ring-neon-blue/50"
+                onMouseEnter={() => openDropdown(section.id)}
+                onFocus={() => openDropdown(section.id)}
+                onKeyDown={(e) => { if (e.key === "Escape") { closeDropdown(); (e.target as HTMLElement).blur(); } }}
+                aria-expanded={activeDropdown === section.id}
+                aria-haspopup="true"
               >
                 {hoveredItem === section.id && (
                   <div className="absolute inset-0 rounded-xl bg-zinc-800/80 transition-all duration-200" />
@@ -116,14 +124,16 @@ export const Navbar: FC<NavbarProps> = ({ version, overallStatus, statusLabel, o
             "rounded-b-2xl border border-t-0 border-white/[0.06]",
             "bg-gradient-to-b from-zinc-950/95 to-zinc-900/40 backdrop-blur-2xl",
           )}>
-            <div className="p-4">
+            <div className="p-4" role="menu">
               <div className="grid grid-cols-1 gap-1">
                 {NAV_SECTIONS.find(s => s.id === activeDropdown)?.links.map(link => (
                   <button
                     key={link.path}
                     type="button"
-                    onClick={() => { setActiveDropdown(null); onNavigate?.(link.path); }}
-                    className="group flex w-full items-start gap-3 rounded-xl p-3 text-left transition-all hover:bg-zinc-800/60"
+                    role="menuitem"
+                    onClick={() => { closeDropdown(); onNavigate?.(link.path); }}
+                    onKeyDown={(e) => { if (e.key === "Escape") closeDropdown(); }}
+                    className="group flex w-full items-start gap-3 rounded-xl p-3 text-left transition-all hover:bg-zinc-800/60 focus:bg-zinc-800/60 focus:outline-none focus-visible:ring-1 focus-visible:ring-neon-blue/50"
                   >
                     <div>
                       <div className="text-sm font-medium text-zinc-200 group-hover:text-white">{link.label}</div>

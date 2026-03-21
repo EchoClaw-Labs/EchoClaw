@@ -10,8 +10,10 @@
 import cron from "node-cron";
 import { execFile } from "node:child_process";
 import * as tasksRepo from "./db/repos/tasks.js";
+import { buildScheduledAlertPrompt, getAutonomousLoopPrompt } from "./prompts/scheduler.js";
 import { takeSnapshot } from "./snapshot.js";
 import { isMutatingCommand } from "./executor.js";
+import { supportsYes } from "./tool-registry.js";
 import logger from "../utils/logger.js";
 
 type TaskHandler = (task: tasksRepo.ScheduledTask) => Promise<Record<string, unknown>>;
@@ -148,7 +150,9 @@ async function executeCliTask(task: tasksRepo.ScheduledTask): Promise<Record<str
     }
   }
   if (!cliArgs.includes("--json")) cliArgs.push("--json");
-  if (task.loopMode === "full" && !cliArgs.includes("--yes")) cliArgs.push("--yes");
+  // Only append --yes for commands that actually declare the flag
+  const commandSnakeForYes = command.replace(/\s+/g, "_");
+  if (task.loopMode === "full" && supportsYes(commandSnakeForYes) && !cliArgs.includes("--yes")) cliArgs.push("--yes");
 
   return new Promise((resolve) => {
     execFile("echoclaw", cliArgs, { timeout: 120_000, maxBuffer: 1024 * 1024 }, (err, stdout) => {
@@ -183,7 +187,7 @@ async function executeAlertTask(task: tasksRepo.ScheduledTask): Promise<Record<s
 
   // For now, alerts go through inference — agent evaluates the condition
   if (inferenceHandler) {
-    const prompt = `SCHEDULED ALERT CHECK: ${message}. Check if this condition is met and report.`;
+    const prompt = buildScheduledAlertPrompt(message);
     const response = await inferenceHandler(prompt, "restricted");
     return { success: true, checked: true, response: response.slice(0, 500) };
   }
@@ -284,8 +288,7 @@ export function startLoopEngine(mode: "full" | "restricted", intervalMs: number)
     loopCycleInFlight = true;
     logger.info("scheduler.loop.cycle_start");
     try {
-      const prompt = "You are in autonomous loop mode. Check portfolio balances, evaluate open positions, review market conditions. Take action if your strategies warrant it. Log any decisions to your trading journal.";
-      await inferenceHandler(prompt, mode);
+      await inferenceHandler(getAutonomousLoopPrompt(), mode);
 
       // Record cycle in DB
       const { recordCycle } = await import("./db/repos/loop.js");

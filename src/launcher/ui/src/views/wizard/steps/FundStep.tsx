@@ -25,13 +25,13 @@ export const FundStep: FC<Props> = ({ busy, onAction, walletAddresses, selectedP
       <p className="text-xs text-zinc-500">Minimum 3 0G required to create a compute ledger</p>
 
       <div>
-        <label className="block text-xs text-zinc-400 mb-1">Deposit to ledger (0G)</label>
-        <input type="number" min="0" step="0.1" value={depositAmount} onChange={e => setDepositAmount(e.target.value)}
+        <label htmlFor="wizard-deposit" className="block text-xs text-zinc-400 mb-1">Deposit to ledger (0G)</label>
+        <input id="wizard-deposit" type="number" min="0" step="0.1" value={depositAmount} onChange={e => setDepositAmount(e.target.value)}
           className="w-full rounded-lg border border-white/[0.1] bg-zinc-900 px-3 py-2 text-sm text-white focus:border-neon-blue focus:outline-none" />
       </div>
       <div>
-        <label className="block text-xs text-zinc-400 mb-1">Fund provider (0G)</label>
-        <input type="number" min="0" step="0.1" value={fundAmount} onChange={e => setFundAmount(e.target.value)}
+        <label htmlFor="wizard-fund" className="block text-xs text-zinc-400 mb-1">Fund provider (0G)</label>
+        <input id="wizard-fund" type="number" min="0" step="0.1" value={fundAmount} onChange={e => setFundAmount(e.target.value)}
           className="w-full rounded-lg border border-white/[0.1] bg-zinc-900 px-3 py-2 text-sm text-white focus:border-neon-blue focus:outline-none" />
       </div>
       <button disabled={busy || !isValid}

@@ -8,7 +8,7 @@
 
 import { execFile } from "node:child_process";
 import { DEFAULT_TOOL_TIMEOUT_MS, ONCHAIN_TOOL_TIMEOUT_MS } from "./constants.js";
-import { isMutating } from "./tool-registry.js";
+import { isMutating, supportsYes } from "./tool-registry.js";
 import type { ToolCall, ToolResult } from "./types.js";
 import logger from "../utils/logger.js";
 
@@ -83,8 +83,8 @@ function buildCliArgs(
   }
 
   if (!parts.includes("--json")) parts.push("--json");
-  // Ensure --yes when operation was explicitly approved by user in UI
-  if (confirmed && !parts.includes("--yes")) parts.push("--yes");
+  // Ensure --yes only for commands that actually declare the flag
+  if (confirmed && supportsYes(command) && !parts.includes("--yes")) parts.push("--yes");
 
   return parts;
 }

@@ -9,6 +9,7 @@ import { randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import { join, extname, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { AGENT_DEFAULT_PORT, AGENT_PID_FILE, AGENT_DIR } from "./constants.js";
 import { runMigrations } from "./db/migrate.js";
 import { closePool } from "./db/client.js";
@@ -68,7 +69,7 @@ const MIME_TYPES: Record<string, string> = {
 function findStaticRoot(): string {
   const candidates = [
     join(process.cwd(), "dist", "agent-ui"),
-    join(dirname(new URL(import.meta.url).pathname), "..", "..", "dist", "agent-ui"),
+    join(dirname(fileURLToPath(import.meta.url)), "..", "..", "dist", "agent-ui"),
   ];
   for (const dir of candidates) {
     if (existsSync(join(dir, "index.html"))) return dir;
@@ -98,8 +99,9 @@ export async function startAgentServer(port?: number, writePid = false): Promise
   const listenPort = port ?? AGENT_DEFAULT_PORT;
   const staticRoot = findStaticRoot();
 
-  // 0. Generate auth token
+  // 0. Generate auth token + export to env for internal self-calls (scheduler backup)
   authToken = generateAuthToken();
+  if (!process.env.AGENT_AUTH_TOKEN) process.env.AGENT_AUTH_TOKEN = authToken;
   logger.debug(`[agent] auth token: ${authToken.slice(0, 12)}...`);
 
   // 1. Database: migrate + seed skills
@@ -149,11 +151,11 @@ export async function startAgentServer(port?: number, writePid = false): Promise
     res.end(JSON.stringify({ status: "ok", port: listenPort }));
   });
 
-  // Auth token endpoint: same-origin UI fetches token + sets cookie
+  // Auth bootstrap: sets HttpOnly cookie — never exposes token in response body.
   registerRoute("GET", "/api/agent/auth-init", (_req, res) => {
     res.writeHead(200, {
       "Content-Type": "application/json",
-      "Set-Cookie": `agent_token=${authToken}; Path=/; HttpOnly; SameSite=Strict${process.env.NODE_ENV === "production" ? "; Secure" : ""}`,
+      "Set-Cookie": `agent_token=${authToken}; HttpOnly; SameSite=Strict; Path=/api`,
     });
     res.end(JSON.stringify({ ok: true }));
   });
@@ -164,12 +166,16 @@ export async function startAgentServer(port?: number, writePid = false): Promise
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     const url = req.url ?? "/";
 
-    // Dev CORS (Vite proxy on different port)
+    // Dev CORS (Vite proxy on different port) — restricted to known dev origins
     if (isDev) {
-      res.setHeader("Access-Control-Allow-Origin", req.headers.origin ?? "http://localhost:4202");
-      res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-      res.setHeader("Access-Control-Allow-Credentials", "true");
+      const allowedDevOrigins = new Set(["http://localhost:4202", "http://127.0.0.1:4202", "http://localhost:4201", "http://127.0.0.1:4201"]);
+      const origin = req.headers.origin ?? "";
+      if (allowedDevOrigins.has(origin)) {
+        res.setHeader("Access-Control-Allow-Origin", origin);
+        res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+        res.setHeader("Access-Control-Allow-Credentials", "true");
+      }
       if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
     }
 
@@ -210,8 +216,9 @@ export async function startAgentServer(port?: number, writePid = false): Promise
     dispatchRoute(req, res);
   });
 
-  server.listen(listenPort, "0.0.0.0", () => {
-    logger.info(`[agent] listening on http://0.0.0.0:${listenPort}`);
+  const bindHost = process.env.AGENT_BIND_HOST ?? "127.0.0.1";
+  server.listen(listenPort, bindHost, () => {
+    logger.info(`[agent] listening on http://${bindHost}:${listenPort}`);
     if (writePid) {
       if (!existsSync(dirname(AGENT_PID_FILE))) mkdirSync(dirname(AGENT_PID_FILE), { recursive: true });
       writeFileSync(AGENT_PID_FILE, String(process.pid), "utf-8");

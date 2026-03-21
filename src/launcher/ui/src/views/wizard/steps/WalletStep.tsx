@@ -111,8 +111,8 @@ export const WalletStep: FC<Props> = ({ busy, onAction, onNext, onError, walletA
 
       {walletMode === "import" && (
         <div>
-          <label className="block text-xs text-zinc-400 mb-1">Private Key</label>
-          <input type="password" value={importKey} onChange={e => setImportKey(e.target.value)} placeholder="0x..."
+          <label htmlFor="wizard-import-key" className="block text-xs text-zinc-400 mb-1">Private Key</label>
+          <input id="wizard-import-key" type="password" value={importKey} onChange={e => setImportKey(e.target.value)} placeholder="0x..."
             className="w-full rounded-lg border border-white/[0.1] bg-zinc-900 px-3 py-2 text-sm text-white focus:border-neon-blue focus:outline-none" />
         </div>
       )}

@@ -2,13 +2,24 @@
 
 import type { AgentStatus, SessionListEntry, FileTreeEntry, ApprovalItem, TradeEntry, TradeSummary, ScheduledTask, PortfolioSnapshot, ChainBalance, BillingState } from "./types";
 
-/** Bootstrap auth — call before any other API request. Sets HttpOnly cookie. */
+/** Bootstrap auth — sets HttpOnly cookie via server. Call before any other API request. */
 export async function initAuth(): Promise<void> {
-  await fetch("/api/agent/auth-init", { credentials: "include" });
+  await fetch("/api/agent/auth-init", { credentials: "same-origin" });
+}
+
+function authHeaders(extra?: HeadersInit): Record<string, string> {
+  const base: Record<string, string> = {};
+  if (extra) {
+    const entries = extra instanceof Headers ? Array.from(extra.entries())
+      : Array.isArray(extra) ? extra
+      : Object.entries(extra);
+    for (const [k, v] of entries) base[k] = v;
+  }
+  return base;
 }
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, { credentials: "include", ...init });
+  const res = await fetch(path, { ...init, credentials: "same-origin", headers: authHeaders(init?.headers) });
   if (!res.ok) {
     const body = await res.json().catch(() => ({})) as { error?: { message?: string } };
     throw new Error(body.error?.message ?? `HTTP ${res.status}`);
@@ -131,8 +142,9 @@ export async function stopLoop(): Promise<void> {
 
 export async function approveAction(id: string, action: "approve" | "reject" = "approve"): Promise<Response> {
   return fetch(`/api/agent/approve/${id}`, {
-    method: "POST", credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    method: "POST",
+    credentials: "same-origin",
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ action }),
   });
 }
@@ -232,9 +244,9 @@ export function sendMessage(
     try {
       const res = await fetch("/api/agent/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ message, loopMode, sessionId }),
-        credentials: "include",
         signal: controller.signal,
       });
 

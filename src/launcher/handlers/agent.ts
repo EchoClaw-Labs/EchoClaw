@@ -20,7 +20,7 @@ import logger from "../../utils/logger.js";
 const CACHE_TTL = 30_000;
 const COMPUTE_CHECK_TIMEOUT_MS = 8_000;
 const AGENT_HEALTH_TIMEOUT_MS = 2_000;
-const MIN_PASSWORD_LENGTH = 4;
+const MIN_PASSWORD_LENGTH = 8;
 
 // ── Docker check cache (30s) ─────────────────────────────────────────
 

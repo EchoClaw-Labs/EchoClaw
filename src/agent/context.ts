@@ -129,39 +129,6 @@ export function calculateHybridBudget(
 // ── Compaction ────────────────────────────────────────────────────────
 
 /**
- * Build a compaction summary prompt.
- * Sent to the model to summarize the current conversation.
- */
-export function buildCompactionPrompt(messages: Message[]): string {
-  const transcript = messages
-    .filter(m => m.role !== "system")
-    .map(m => `[${m.role}]: ${m.content.slice(0, 500)}`)
-    .join("\n\n");
-
-  return `You are summarizing a conversation session for memory preservation.
-
-Produce TWO sections:
-
-## Session Summary
-A concise summary of what happened in this session (max 500 words). Include:
-- Key decisions made
-- Trades executed and their outcomes
-- Important information learned
-- Current portfolio state if discussed
-
-## Key Insights for Memory
-Extract 3-10 bullet points of important learnings, patterns, or user preferences that should be permanently remembered. These will be appended to memory.md.
-
-Format each insight as: "- [CATEGORY] insight text"
-Categories: TRADING, PREFERENCE, MARKET, STRATEGY, RISK, SOCIAL, TECHNICAL
-
----
-
-Session transcript:
-${transcript}`;
-}
-
-/**
  * Parse compaction result into summary and insights.
  */
 export function parseCompactionResult(response: string): {

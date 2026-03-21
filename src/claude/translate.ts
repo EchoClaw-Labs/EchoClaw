@@ -107,6 +107,7 @@ interface OpenAIRequest {
   stop?: string[];
   stream?: boolean;
   tools?: OpenAITool[];
+  tool_choice?: "auto" | "none" | "required" | { type: "function"; function: { name: string } };
 }
 
 interface OpenAIResponse {
@@ -270,6 +271,17 @@ export function translateRequest(req: AnthropicRequest): OpenAIRequest {
         parameters: t.input_schema,
       },
     }));
+
+    // Forward tool_choice: Anthropic → OpenAI format
+    if (req.tool_choice) {
+      const tc = req.tool_choice as Record<string, unknown>;
+      if (tc.type === "auto") result.tool_choice = "auto";
+      else if (tc.type === "any") result.tool_choice = "required";
+      else if (tc.type === "none") result.tool_choice = "none";
+      else if (tc.type === "tool" && typeof tc.name === "string") {
+        result.tool_choice = { type: "function", function: { name: tc.name } };
+      }
+    }
   }
 
   return result;

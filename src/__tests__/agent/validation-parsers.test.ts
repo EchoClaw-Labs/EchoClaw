@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   parseChatRequest,
   parseApproveRequest,
+  parseTelegramConfigRequest,
   parseToggleTaskRequest,
   parseLoopStartRequest,
   RequestValidationError,
@@ -83,6 +84,49 @@ describe("parseToggleTaskRequest", () => {
 
   it("throws on missing id", () => {
     expect(() => parseToggleTaskRequest({}, {})).toThrow(RequestValidationError);
+  });
+});
+
+describe("parseTelegramConfigRequest", () => {
+  it("parses valid Telegram config", () => {
+    const result = parseTelegramConfigRequest({
+      botToken: "123456:ABC-DEF_123",
+      chatIds: [123456789, "-1001234567890"],
+      loopMode: "restricted",
+    });
+
+    expect(result.botToken).toBe("123456:ABC-DEF_123");
+    expect(result.chatIds).toEqual([123456789, -1001234567890]);
+    expect(result.loopMode).toBe("restricted");
+  });
+
+  it("defaults loopMode to restricted", () => {
+    const result = parseTelegramConfigRequest({
+      botToken: "123456:ABC-DEF_123",
+      chatIds: [123456789],
+    });
+
+    expect(result.loopMode).toBe("restricted");
+  });
+
+  it("throws on invalid token format", () => {
+    expect(() => parseTelegramConfigRequest({
+      botToken: "not-a-telegram-token",
+      chatIds: [123456789],
+    })).toThrow(RequestValidationError);
+  });
+
+  it("throws on missing chatIds", () => {
+    expect(() => parseTelegramConfigRequest({
+      botToken: "123456:ABC-DEF_123",
+    })).toThrow(RequestValidationError);
+  });
+
+  it("throws on non-integer chatIds", () => {
+    expect(() => parseTelegramConfigRequest({
+      botToken: "123456:ABC-DEF_123",
+      chatIds: [123.45],
+    })).toThrow(RequestValidationError);
   });
 });
 

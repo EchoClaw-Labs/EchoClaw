@@ -39,6 +39,7 @@
   "dependencies": {
     "@0gfoundation/0g-ts-sdk": "^1.2.1",
     "@0glabs/0g-serving-broker": "^0.7.1",
+    "@grammyjs/auto-retry": "^2.0.2",
     "@hugeicons/core-free-icons": "^4.0.0",
     "@hugeicons/react": "^1.1.6",
     "@radix-ui/react-dialog": "^1.1.15",
@@ -54,6 +55,7 @@
     "ethers": "^6.13.1",
     "figlet": "^1.8.0",
     "gradient-string": "^2.0.2",
+    "grammy": "^1.41.1",
     "inquirer": "^9.3.7",
     "json5": "^2.2.3",
     "markdown-to-jsx": "^9.7.9",

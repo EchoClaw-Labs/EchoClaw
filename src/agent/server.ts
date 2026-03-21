@@ -26,6 +26,9 @@ import { registerBillingRoutes } from "./handlers/billing.js";
 import { registerLoopRoutes } from "./handlers/loop.js";
 import { registerBackupRoutes } from "./handlers/backup.js";
 import { registerConfigRoutes } from "./handlers/config.js";
+import { registerTelegramRoutes } from "./handlers/telegram.js";
+import { startTelegram, stopTelegram } from "./telegram/index.js";
+import * as telegramRepo from "./db/repos/telegram.js";
 import { registerRoute, dispatchRoute } from "./routes.js";
 import { initScheduler, setInferenceHandler, stopAll as stopScheduler } from "./scheduler.js";
 import { checkRateLimit, getClientIp } from "./rate-limit.js";
@@ -35,13 +38,35 @@ import logger from "../utils/logger.js";
 
 const AGENT_TOKEN_FILE = join(AGENT_DIR, "agent.token");
 
+function ensureAgentDir(): void {
+  if (!existsSync(AGENT_DIR)) mkdirSync(AGENT_DIR, { recursive: true });
+}
+
+function readPersistedAuthToken(): string | null {
+  if (!existsSync(AGENT_TOKEN_FILE)) return null;
+  const token = readFileSync(AGENT_TOKEN_FILE, "utf-8").trim();
+  return token.length > 0 ? token : null;
+}
+
+function persistAuthToken(token: string): void {
+  ensureAgentDir();
+  writeFileSync(AGENT_TOKEN_FILE, token, { mode: 0o600 });
+}
+
 function generateAuthToken(): string {
-  // Use env var if provided (Docker / dev), otherwise generate
-  if (process.env.AGENT_AUTH_TOKEN) return process.env.AGENT_AUTH_TOKEN;
+  // Prefer explicit env config, but keep the persisted token file in sync so:
+  // 1. host-side CLI helpers can authenticate to the agent,
+  // 2. Telegram token decryption stays stable across restarts.
+  if (process.env.AGENT_AUTH_TOKEN) {
+    persistAuthToken(process.env.AGENT_AUTH_TOKEN);
+    return process.env.AGENT_AUTH_TOKEN;
+  }
+
+  const persisted = readPersistedAuthToken();
+  if (persisted) return persisted;
 
   const token = `agent-${randomBytes(24).toString("hex")}`;
-  if (!existsSync(AGENT_DIR)) mkdirSync(AGENT_DIR, { recursive: true });
-  writeFileSync(AGENT_TOKEN_FILE, token, { mode: 0o600 });
+  persistAuthToken(token);
   return token;
 }
 
@@ -144,6 +169,7 @@ export async function startAgentServer(port?: number, writePid = false): Promise
   registerLoopRoutes();
   registerBackupRoutes();
   registerConfigRoutes();
+  registerTelegramRoutes();
 
   // Health: no auth required
   registerRoute("GET", "/api/agent/health", (_req, res) => {
@@ -217,20 +243,31 @@ export async function startAgentServer(port?: number, writePid = false): Promise
   });
 
   const bindHost = process.env.AGENT_BIND_HOST ?? "127.0.0.1";
-  server.listen(listenPort, bindHost, () => {
+  server.listen(listenPort, bindHost, async () => {
     logger.info(`[agent] listening on http://${bindHost}:${listenPort}`);
     if (writePid) {
       if (!existsSync(dirname(AGENT_PID_FILE))) mkdirSync(dirname(AGENT_PID_FILE), { recursive: true });
       writeFileSync(AGENT_PID_FILE, String(process.pid), "utf-8");
+    }
+
+    // 6. Auto-start Telegram bot if configured + enabled
+    try {
+      const tgConfig = await telegramRepo.getConfig();
+      if (tgConfig.enabled && tgConfig.botToken) {
+        logger.info("[agent] starting Telegram bot...");
+        await startTelegram();
+      }
+    } catch (err) {
+      logger.warn("[agent] Telegram auto-start failed (non-fatal):", err instanceof Error ? err.message : String(err));
     }
   });
 
   const shutdown = async () => {
     logger.info("[agent] shutting down...");
     stopScheduler();
+    await stopTelegram();
     await closePool();
     try { if (existsSync(AGENT_PID_FILE)) unlinkSync(AGENT_PID_FILE); } catch { /* */ }
-    try { if (existsSync(AGENT_TOKEN_FILE)) unlinkSync(AGENT_TOKEN_FILE); } catch { /* */ }
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(1), 5000);
   };

@@ -6,9 +6,10 @@ import { TradesView } from "./views/TradesView";
 import { PortfolioView } from "./views/PortfolioView";
 import { MemoryView } from "./views/MemoryView";
 import { OpsWidget } from "./views/OpsWidget";
+import { TelegramView } from "./views/TelegramView";
 import {
   HugeiconsIcon, MessageMultiple01Icon, Activity01Icon,
-  Wallet01Icon, BrainIcon, Settings01Icon,
+  Wallet01Icon, BrainIcon, Settings01Icon, TelegramIcon,
 } from "./components/icons";
 import { initAuth, getStatus, getRecentTrades } from "./api";
 import type { AgentStatus, TradeEntry, TradeSummary } from "./types";
@@ -16,7 +17,7 @@ import { cn } from "./utils";
 
 const STATUS_POLL_MS = 10_000;
 
-type WidgetType = "trades" | "portfolio" | "memory" | "ops";
+type WidgetType = "trades" | "portfolio" | "memory" | "ops" | "telegram";
 
 export const App: FC = () => {
   const [status, setStatus] = useState<AgentStatus | null>(null);
@@ -57,6 +58,7 @@ export const App: FC = () => {
     { key: "portfolio", label: "Portfolio", icon: Wallet01Icon },
     { key: "memory", label: "Memory", icon: BrainIcon },
     { key: "ops", label: "Ops", icon: Settings01Icon },
+    { key: "telegram", label: "Telegram", icon: TelegramIcon },
   ];
 
   return (
@@ -103,13 +105,13 @@ export const App: FC = () => {
                 )}
               >
                 <div className="flex items-center justify-center w-6 h-6 shrink-0">
-                  <HugeiconsIcon 
-                    icon={item.icon as never} 
-                    size={20} 
+                  <HugeiconsIcon
+                    icon={item.icon as never}
+                    size={20}
                     className={cn(
                       "transition-transform duration-200",
                       isActive ? "text-white" : "text-muted-foreground group-hover:text-foreground group-hover:scale-110"
-                    )} 
+                    )}
                     strokeWidth={isActive ? 2 : 1.5}
                   />
                 </div>
@@ -208,6 +210,18 @@ export const App: FC = () => {
             defaultWidth={420} defaultHeight={500}
           >
             <OpsWidget onBack={() => toggleWidget("ops")} />
+          </FloatingWidget>
+        </ErrorBoundary>
+      )}
+      {openWidgets.has("telegram") && (
+        <ErrorBoundary>
+          <FloatingWidget
+            title="Telegram"
+            icon={<HugeiconsIcon icon={TelegramIcon} size={14} className="text-accent" />}
+            onClose={() => toggleWidget("telegram")}
+            defaultWidth={400} defaultHeight={520}
+          >
+            <TelegramView onBack={() => toggleWidget("telegram")} />
           </FloatingWidget>
         </ErrorBoundary>
       )}

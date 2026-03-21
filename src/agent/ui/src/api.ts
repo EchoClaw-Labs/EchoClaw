@@ -1,6 +1,6 @@
 /** Typed API wrappers for agent endpoints. */
 
-import type { AgentStatus, SessionListEntry, FileTreeEntry, ApprovalItem, TradeEntry, TradeSummary, ScheduledTask, PortfolioSnapshot, ChainBalance, BillingState } from "./types";
+import type { AgentStatus, SessionListEntry, FileTreeEntry, ApprovalItem, TradeEntry, TradeSummary, ScheduledTask, PortfolioSnapshot, ChainBalance, BillingState, TelegramStatus } from "./types";
 
 /** Bootstrap auth — sets HttpOnly cookie via server. Call before any other API request. */
 export async function initAuth(): Promise<void> {
@@ -177,8 +177,37 @@ export async function updateSoul(content: string): Promise<void> {
 
 // ── Config ──────────────────────────────────────────────────────────
 
-export async function getAgentConfig(): Promise<{ tavilyConfigured: boolean }> {
+export async function getAgentConfig(): Promise<{ tavilyConfigured: boolean; telegramConfigured: boolean }> {
   return fetchJson("/api/agent/config");
+}
+
+// ── Telegram ────────────────────────────────────────────────────────
+
+export async function getTelegramStatus(): Promise<TelegramStatus> {
+  return fetchJson("/api/agent/telegram/status");
+}
+
+export async function configureTelegram(config: { botToken: string; chatIds: number[]; loopMode: string }): Promise<Record<string, unknown>> {
+  return fetchJson("/api/agent/telegram/configure", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(config),
+  });
+}
+
+export async function enableTelegram(): Promise<void> {
+  await fetchJson("/api/agent/telegram/enable", { method: "POST" });
+}
+
+export async function disableTelegram(): Promise<void> {
+  await fetchJson("/api/agent/telegram/disable", { method: "POST" });
+}
+
+export async function testTelegram(): Promise<Record<string, unknown>> {
+  return fetchJson("/api/agent/telegram/test", { method: "POST" });
+}
+
+export async function disconnectTelegram(): Promise<void> {
+  await fetchJson("/api/agent/telegram/disconnect", { method: "POST" });
 }
 
 /**

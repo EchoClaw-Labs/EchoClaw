@@ -12,8 +12,12 @@ export async function enqueue(
 }
 
 export async function approve(id: string): Promise<(ApprovalItem & { toolCallId?: string; sessionId?: string }) | null> {
-  await execute("UPDATE approval_queue SET status = 'approved', resolved_at = NOW() WHERE id = $1 AND status = 'pending'", [id]);
-  const row = await queryOne<Record<string, unknown>>("SELECT * FROM approval_queue WHERE id = $1", [id]);
+  // Atomic transition: only returns the row if it was actually pending → approved.
+  // Prevents double-execution on duplicate clicks or replayed requests.
+  const row = await queryOne<Record<string, unknown>>(
+    "UPDATE approval_queue SET status = 'approved', resolved_at = NOW() WHERE id = $1 AND status = 'pending' RETURNING *",
+    [id],
+  );
   if (!row) return null;
   const item = rowToItem(row);
   const ctx = row.pending_context as Record<string, unknown> | null;
@@ -21,8 +25,12 @@ export async function approve(id: string): Promise<(ApprovalItem & { toolCallId?
 }
 
 export async function reject(id: string): Promise<ApprovalItem | null> {
-  await execute("UPDATE approval_queue SET status = 'rejected', resolved_at = NOW() WHERE id = $1 AND status = 'pending'", [id]);
-  return getItem(id);
+  const row = await queryOne<Record<string, unknown>>(
+    "UPDATE approval_queue SET status = 'rejected', resolved_at = NOW() WHERE id = $1 AND status = 'pending' RETURNING *",
+    [id],
+  );
+  if (!row) return null;
+  return rowToItem(row);
 }
 
 export async function getPending(): Promise<ApprovalItem[]> {

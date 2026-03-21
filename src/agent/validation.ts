@@ -90,6 +90,41 @@ export function parseToggleTaskRequest(
   return { id, enabled };
 }
 
+// ── Telegram Config ─────────────────────────────────────────────────
+
+const TELEGRAM_LOOP_MODES = ["full", "restricted", "off"] as const;
+type TelegramLoopMode = (typeof TELEGRAM_LOOP_MODES)[number];
+
+const TELEGRAM_TOKEN_RE = /^\d+:[A-Za-z0-9_-]+$/;
+
+export function parseTelegramConfigRequest(
+  body: Record<string, unknown> | null,
+): { botToken: string; chatIds: number[]; loopMode: string } {
+  const botToken = body?.botToken;
+  if (!botToken || typeof botToken !== "string" || !TELEGRAM_TOKEN_RE.test(botToken)) {
+    throw new RequestValidationError("botToken", "botToken is required and must match Telegram token format (e.g. 123456:ABC-DEF...)");
+  }
+
+  const rawChatIds = body?.chatIds;
+  if (!Array.isArray(rawChatIds) || rawChatIds.length === 0) {
+    throw new RequestValidationError("chatIds", "chatIds is required (non-empty array of numbers)");
+  }
+  const chatIds = rawChatIds.map((id, i) => {
+    const n = Number(id);
+    if (!Number.isFinite(n) || !Number.isInteger(n)) {
+      throw new RequestValidationError("chatIds", `chatIds[${i}] must be an integer`);
+    }
+    return n;
+  });
+
+  const rawLoopMode = body?.loopMode ?? "restricted";
+  if (typeof rawLoopMode !== "string" || !TELEGRAM_LOOP_MODES.includes(rawLoopMode as TelegramLoopMode)) {
+    throw new RequestValidationError("loopMode", "loopMode must be: full, restricted, or off");
+  }
+
+  return { botToken, chatIds, loopMode: rawLoopMode };
+}
+
 // ── Loop Start ───────────────────────────────────────────────────────
 
 const ACTIVE_LOOP_MODES = ["full", "restricted"] as const;

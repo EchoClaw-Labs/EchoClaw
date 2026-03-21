@@ -190,6 +190,18 @@ export type ChatFeedItem =
     turn: AssistantTurn;
   };
 
+// ── Telegram ────────────────────────────────────────────────────────
+
+export interface TelegramStatus {
+  configured: boolean;
+  enabled: boolean;
+  connected: boolean;
+  botUsername: string | null;
+  authorizedChatIds: number[];
+  loopMode: string;
+  decryptionFailed?: boolean;
+}
+
 /** SSE event from agent chat endpoint */
 export type AgentEventType =
   | "status" | "text_delta" | "tool_start" | "tool_result"

@@ -53,6 +53,9 @@ export {
   // Settings
   Settings01Icon,          // Operations
 
+  // Integrations
+  TelegramIcon,            // Telegram
+
   // Status
   CheckmarkCircle02Icon,   // Success
   AlertCircleIcon,         // Warning
